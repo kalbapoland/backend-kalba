@@ -1,0 +1,16 @@
+[project]
+name = "backend-kalba"
+version = "0.1.0"
+description = "Kalba - Meditation & Workshop API"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.34,<1",
+    "sqlmodel>=0.0.22,<1",
+    "alembic>=1.14,<2",
+    "psycopg2-binary>=2.9,<3",
+    "pydantic-settings>=2.7,<3",
+    "pyjwt[crypto]>=2.10,<3",
+    "httpx>=0.28,<1",
+    "asyncpg>=0.30,<1",
+]

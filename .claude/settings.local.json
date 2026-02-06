@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/bartlomiejpalus/Documents/Projects/backend-kalba log --oneline -5)",
+      "Bash(uv init:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv python install:*)",
+      "Bash(uv python pin:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill -9 sleep 1)",
+      "Bash(xargs kill:*)",
+      "Bash(uv run python:*)"
+    ]
+  }
+}
