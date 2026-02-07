@@ -9,7 +9,8 @@
       "Bash(lsof:*)",
       "Bash(xargs kill -9 sleep 1)",
       "Bash(xargs kill:*)",
-      "Bash(uv run python:*)"
+      "Bash(uv run python:*)",
+      "Bash(uv add:*)"
     ]
   }
 }

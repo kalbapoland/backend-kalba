@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -8,6 +9,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.security import create_access_token, verify_google_id_token
 from app.db import get_db_session
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -33,7 +36,11 @@ async def google_auth(
     ``id_token`` here.  The backend verifies it, creates the user if needed,
     and returns a local JWT for subsequent requests.
     """
-    google_payload = await verify_google_id_token(body.id_token)
+    try:
+        google_payload = await verify_google_id_token(body.id_token)
+    except Exception:
+        logger.warning("Google auth failed for token (invalid or rejected)")
+        raise
 
     google_id: str = google_payload["sub"]
     email: str = google_payload.get("email", "")
@@ -53,6 +60,9 @@ async def google_auth(
         db_session.add(user)
         await db_session.commit()
         await db_session.refresh(user)
+        logger.info("Google auth succeeded for %s (new user created)", email)
+    else:
+        logger.info("Google auth succeeded for %s (existing user)", email)
 
     access_token = create_access_token(user.id)
     return AuthResponse(access_token=access_token, user_id=user.id)
