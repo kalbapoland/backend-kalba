@@ -1,4 +1,5 @@
 import enum
+from typing import Optional
 from uuid import UUID, uuid4
 
 from sqlmodel import Field, Relationship, SQLModel
@@ -17,7 +18,7 @@ class User(SQLModel, table=True):
     google_id: str = Field(unique=True, index=True)
     role: UserRole = Field(default=UserRole.USER)
 
-    trainer_profile: "TrainerProfile | None" = Relationship(back_populates="user")
+    trainer_profile: Optional["TrainerProfile"] = Relationship(back_populates="user")
 
 
 class TrainerProfile(SQLModel, table=True):

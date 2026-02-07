@@ -54,9 +54,9 @@ Set `APP_ENV` to switch between profiles. Each loads its own `.env.{APP_ENV}` fi
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.13+
 - [uv](https://docs.astral.sh/uv/)
-- PostgreSQL
+- [Docker](https://docs.docker.com/get-docker/)
 
 ### Install dependencies
 
@@ -72,21 +72,46 @@ Copy and edit the local env file:
 cp .env.local .env.local  # already provided as a template
 ```
 
-Update `DATABASE_URL`, `JWT_SECRET_KEY`, and `GOOGLE_CLIENT_ID` with your values.
+Update `JWT_SECRET_KEY` and `GOOGLE_CLIENT_ID` with your values.
 
-### Create the database
+### Database (Docker)
+
+Start the local PostgreSQL database:
 
 ```bash
-createdb kalba
+docker compose -f docker-compose.local.yml up -d
 ```
 
-### Run migrations
-
-Generate the initial migration and apply it:
+Stop the database (data is preserved):
 
 ```bash
-uv run alembic revision --autogenerate -m "initial tables"
-uv run alembic upgrade head
+docker compose -f docker-compose.local.yml down
+```
+
+Stop and wipe all data:
+
+```bash
+docker compose -f docker-compose.local.yml down -v
+```
+
+### Migrations (Alembic)
+
+Apply all pending migrations:
+
+```bash
+uv run python -m alembic upgrade head
+```
+
+Generate a new migration after model changes:
+
+```bash
+uv run python -m alembic revision --autogenerate -m "describe your change"
+```
+
+Rollback the last migration:
+
+```bash
+uv run python -m alembic downgrade -1
 ```
 
 ### Start the server

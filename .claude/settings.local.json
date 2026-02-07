@@ -10,7 +10,9 @@
       "Bash(xargs kill -9 sleep 1)",
       "Bash(xargs kill:*)",
       "Bash(uv run python:*)",
-      "Bash(uv add:*)"
+      "Bash(uv add:*)",
+      "Bash(docker compose:*)",
+      "Bash(/Users/bartlomiejpalus/Documents/Projects/kalba/backend-kalba/.venv/bin/alembic upgrade head:*)"
     ]
   }
 }
