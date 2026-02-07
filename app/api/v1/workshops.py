@@ -59,11 +59,17 @@ async def create_workshop(
             detail="Only trainers can create workshops",
         )
 
+    start_time = body.start_time
+    if start_time.tzinfo is not None:
+        from datetime import timezone
+
+        start_time = start_time.astimezone(timezone.utc).replace(tzinfo=None)
+
     workshop = Workshop(
         trainer_id=user_id,
         title=body.title,
         description=body.description,
-        start_time=body.start_time,
+        start_time=start_time,
         duration_minutes=body.duration_minutes,
         price=body.price,
         max_participants=body.max_participants,
