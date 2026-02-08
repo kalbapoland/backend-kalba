@@ -12,7 +12,8 @@
       "Bash(uv run python:*)",
       "Bash(uv add:*)",
       "Bash(docker compose:*)",
-      "Bash(/Users/bartlomiejpalus/Documents/Projects/kalba/backend-kalba/.venv/bin/alembic upgrade head:*)"
+      "Bash(/Users/bartlomiejpalus/Documents/Projects/kalba/backend-kalba/.venv/bin/alembic upgrade head:*)",
+      "Bash(python:*)"
     ]
   }
 }

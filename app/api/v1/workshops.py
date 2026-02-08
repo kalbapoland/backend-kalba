@@ -1,38 +1,21 @@
+import logging
 from datetime import datetime
-from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.security import get_current_user_id
 from app.db import get_db_session
 from app.models.user import User, UserRole
-from app.models.workshop import Workshop
+from app.models.video import WorkshopRules
+from app.models.workshop import Workshop, WorkshopCreate, WorkshopRead
+from app.services.daily import DailyService, DailyServiceError, get_daily_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/workshops", tags=["workshops"])
-
-
-class WorkshopCreate(BaseModel):
-    title: str
-    description: str = ""
-    start_time: datetime
-    duration_minutes: int
-    price: Decimal = Decimal("0.00")
-    max_participants: int
-
-
-class WorkshopRead(BaseModel):
-    id: UUID
-    trainer_id: UUID
-    title: str
-    description: str
-    start_time: datetime
-    duration_minutes: int
-    price: Decimal
-    max_participants: int
 
 
 @router.get("/", response_model=list[WorkshopRead])
@@ -50,6 +33,7 @@ async def create_workshop(
     body: WorkshopCreate,
     user_id: UUID = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db_session),
+    daily: DailyService = Depends(get_daily_service),
 ):
     """Create a new workshop. Only trainers may create workshops."""
     user = await session.get(User, user_id)
@@ -75,6 +59,27 @@ async def create_workshop(
         max_participants=body.max_participants,
     )
     session.add(workshop)
+    await session.commit()
+    await session.refresh(workshop)
+
+    # Create Daily.co room for this workshop
+    room_name = f"kalba-{workshop.id}"
+    try:
+        await daily.create_room(
+            name=room_name,
+            max_participants=workshop.max_participants,
+            start_time=workshop.start_time,
+            duration_minutes=workshop.duration_minutes,
+        )
+    except DailyServiceError:
+        logger.warning("Failed to create Daily room for workshop %s", workshop.id)
+    workshop.video_room_id = room_name
+    session.add(workshop)
+
+    # Create default rules
+    rules = WorkshopRules(workshop_id=workshop.id)
+    session.add(rules)
+
     await session.commit()
     await session.refresh(workshop)
     return workshop

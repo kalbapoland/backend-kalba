@@ -2,6 +2,7 @@ import enum
 from typing import Optional
 from uuid import UUID, uuid4
 
+from pydantic import BaseModel
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -32,3 +33,11 @@ class TrainerProfile(SQLModel, table=True):
     )
 
     user: User | None = Relationship(back_populates="trainer_profile")
+
+
+class UserRead(BaseModel):
+    id: UUID
+    email: str
+    full_name: str
+    is_active: bool
+    role: UserRole

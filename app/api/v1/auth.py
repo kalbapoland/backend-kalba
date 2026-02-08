@@ -1,28 +1,17 @@
 import logging
-from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.security import create_access_token, verify_google_id_token
 from app.db import get_db_session
+from app.models.auth import AuthResponse, GoogleAuthRequest
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-class GoogleAuthRequest(BaseModel):
-    id_token: str
-
-
-class AuthResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user_id: UUID
 
 
 @router.post("/google", response_model=AuthResponse)

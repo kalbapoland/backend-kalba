@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_ios_client_id: str = ""
 
+    # Daily.co
+    daily_api_key: str = ""
+    daily_domain: str = ""  # e.g. "kalba.daily.co"
+
     # CORS
     cors_origins: list[str] = ["*"]
 

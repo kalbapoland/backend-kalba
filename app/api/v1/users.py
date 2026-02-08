@@ -1,22 +1,13 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.security import get_current_user_id
 from app.db import get_db_session
-from app.models.user import User, UserRole
+from app.models.user import User, UserRead
 
 router = APIRouter(prefix="/users", tags=["users"])
-
-
-class UserRead(BaseModel):
-    id: UUID
-    email: str
-    full_name: str
-    is_active: bool
-    role: UserRole
 
 
 @router.get("/me", response_model=UserRead)
