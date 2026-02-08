@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     # Google OAuth
     google_client_id: str = ""
+    google_ios_client_id: str = ""
 
     # CORS
     cors_origins: list[str] = ["*"]

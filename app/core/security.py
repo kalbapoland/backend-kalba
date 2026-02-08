@@ -68,7 +68,12 @@ async def verify_google_id_token(
     payload = resp.json()
 
     # Verify the token was issued for our app
-    if settings.google_client_id and payload.get("aud") != settings.google_client_id:
+    allowed_client_ids = {
+        cid
+        for cid in (settings.google_client_id, settings.google_ios_client_id)
+        if cid
+    }
+    if allowed_client_ids and payload.get("aud") not in allowed_client_ids:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token was not issued for this application",
