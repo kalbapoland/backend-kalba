@@ -1,9 +1,9 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.models.user import User
@@ -52,3 +52,11 @@ class WorkshopRead(BaseModel):
     duration_minutes: int
     price: Decimal
     max_participants: int
+
+    @field_validator("start_time", mode="before")
+    @classmethod
+    def ensure_utc_aware(cls, v: datetime) -> datetime:
+        """Attach UTC tzinfo to naive datetimes so the API returns 'Z' suffix."""
+        if isinstance(v, datetime) and v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
