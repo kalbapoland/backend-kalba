@@ -34,6 +34,15 @@ class WorkshopCreate(BaseModel):
     max_participants: int
 
 
+class WorkshopUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    start_time: datetime | None = None
+    duration_minutes: int | None = None
+    price: Decimal | None = None
+    max_participants: int | None = None
+
+
 class WorkshopRead(BaseModel):
     id: UUID
     trainer_id: UUID

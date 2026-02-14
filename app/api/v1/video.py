@@ -12,6 +12,8 @@ from app.db import get_db_session
 from app.models.user import User
 from app.models.video import (
     HostAction,
+    HostActionResponse,
+    HostActionType,
     JoinResponse,
     ParticipantRole,
     RulesRead,
@@ -41,10 +43,12 @@ async def join_workshop(
     if workshop is None:
         raise HTTPException(status_code=404, detail="Workshop not found")
 
-    # 2. Time window check (5 min early until workshop end)
+    # 2. Time window check (5 min early, up to 10 min after end)
     now = datetime.now(UTC).replace(tzinfo=None)
     earliest_join = workshop.start_time - timedelta(minutes=5)
-    latest_join = workshop.start_time + timedelta(minutes=workshop.duration_minutes)
+    latest_join = workshop.start_time + timedelta(
+        minutes=workshop.duration_minutes + 10
+    )
     if now < earliest_join:
         raise HTTPException(status_code=403, detail="Workshop has not started yet")
     if now > latest_join:
@@ -87,12 +91,25 @@ async def join_workshop(
         session.add(existing)
     await session.commit()
 
-    # 6. Ensure Daily room exists
-    if not workshop.video_room_id:
-        raise HTTPException(
-            status_code=500,
-            detail="Video room not configured for this workshop",
+    # 6. Ensure Daily room exists (created on first join)
+    room_name = workshop.video_room_id or f"kalba-{workshop.id}"
+    try:
+        await daily.create_room(
+            name=room_name,
+            max_participants=workshop.max_participants,
+            start_time=workshop.start_time,
+            duration_minutes=workshop.duration_minutes,
         )
+    except DailyServiceError as exc:
+        # 409 / "already-exists" is fine — room was created by a previous join
+        if "already exists" not in exc.detail:
+            logger.error("Failed to create Daily room on join: %s", exc.detail)
+            raise HTTPException(status_code=502, detail="Video service unavailable")
+    if not workshop.video_room_id:
+        workshop.video_room_id = room_name
+        session.add(workshop)
+        await session.commit()
+        await session.refresh(workshop)
 
     # 7. Load rules (default values if none stored)
     rules_stmt = select(WorkshopRules).where(WorkshopRules.workshop_id == workshop_id)
@@ -101,6 +118,8 @@ async def join_workshop(
     force_mic_muted = rules_row.force_mic_muted_on_join if rules_row else True
     allow_unmute_after = rules_row.allow_unmute_after if rules_row else 0
     allow_camera_toggle = rules_row.allow_camera_toggle if rules_row else False
+    all_muted = rules_row.all_muted if rules_row else False
+    all_cameras_off = rules_row.all_cameras_off if rules_row else False
 
     # 8. Load user for display name
     user = await session.get(User, user_id)
@@ -113,8 +132,8 @@ async def join_workshop(
             user_id=str(user_id),
             is_owner=is_host,
             exp_minutes=10,
-            start_video_off=not force_camera_on,
-            start_audio_off=force_mic_muted,
+            start_video_off=(not force_camera_on) or all_cameras_off,
+            start_audio_off=force_mic_muted or all_muted,
         )
     except DailyServiceError as exc:
         logger.error("Failed to create meeting token: %s", exc.detail)
@@ -131,6 +150,8 @@ async def join_workshop(
             force_mic_muted_on_join=force_mic_muted,
             allow_unmute_after=allow_unmute_after,
             allow_camera_toggle=allow_camera_toggle,
+            all_muted=all_muted,
+            all_cameras_off=all_cameras_off,
         ),
     )
 
@@ -148,18 +169,44 @@ async def daily_webhook(request: Request):
     return {"status": "ok"}
 
 
-@router.post("/workshops/{workshop_id}/host-action")
+@router.get("/workshops/{workshop_id}/rules", response_model=RulesRead)
+async def get_workshop_rules(
+    workshop_id: UUID,
+    user_id: UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Get current workshop rules including live host-enforced state."""
+    workshop = await session.get(Workshop, workshop_id)
+    if workshop is None:
+        raise HTTPException(status_code=404, detail="Workshop not found")
+
+    rules_stmt = select(WorkshopRules).where(WorkshopRules.workshop_id == workshop_id)
+    rules_row = (await session.exec(rules_stmt)).first()
+
+    return RulesRead(
+        force_camera_on=rules_row.force_camera_on if rules_row else True,
+        force_mic_muted_on_join=rules_row.force_mic_muted_on_join
+        if rules_row
+        else True,
+        allow_unmute_after=rules_row.allow_unmute_after if rules_row else 0,
+        allow_camera_toggle=rules_row.allow_camera_toggle if rules_row else False,
+        all_muted=rules_row.all_muted if rules_row else False,
+        all_cameras_off=rules_row.all_cameras_off if rules_row else False,
+    )
+
+
+@router.post(
+    "/workshops/{workshop_id}/host-action",
+    response_model=HostActionResponse,
+)
 async def host_action(
     workshop_id: UUID,
     body: HostAction,
     user_id: UUID = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db_session),
+    daily: DailyService = Depends(get_daily_service),
 ):
-    """Host-only actions (mute_all, remove_participant, lock_room).
-
-    MVP: validates host, logs action, returns accepted. Full Daily REST
-    integration in a future iteration.
-    """
+    """Host-only actions: mute/unmute all, cameras on/off all."""
     workshop = await session.get(Workshop, workshop_id)
     if workshop is None:
         raise HTTPException(status_code=404, detail="Workshop not found")
@@ -168,5 +215,58 @@ async def host_action(
             status_code=403, detail="Only the host can perform this action"
         )
 
-    logger.info("Host action '%s' on workshop %s", body.action, workshop_id)
-    return {"status": "accepted", "action": body.action}
+    # Load or create rules
+    rules_stmt = select(WorkshopRules).where(WorkshopRules.workshop_id == workshop_id)
+    rules = (await session.exec(rules_stmt)).first()
+    if rules is None:
+        rules = WorkshopRules(workshop_id=workshop_id)
+        session.add(rules)
+
+    # Update live state
+    action = body.action
+    if action == HostActionType.MUTE_ALL:
+        rules.all_muted = True
+    elif action == HostActionType.UNMUTE_ALL:
+        rules.all_muted = False
+    elif action == HostActionType.CAMERAS_OFF_ALL:
+        rules.all_cameras_off = True
+    elif action == HostActionType.CAMERAS_ON_ALL:
+        rules.all_cameras_off = False
+
+    session.add(rules)
+    await session.commit()
+
+    # Broadcast app-message to the Daily room
+    broadcast_sent = False
+    if workshop.video_room_id:
+        message_data = {
+            "type": "host_control",
+            "action": action.value,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "from": "server",
+        }
+        try:
+            await daily.send_app_message(
+                room_name=workshop.video_room_id,
+                data=message_data,
+            )
+            broadcast_sent = True
+        except DailyServiceError as exc:
+            logger.warning(
+                "Failed to broadcast host action to room %s: %s",
+                workshop.video_room_id,
+                exc.detail,
+            )
+
+    logger.info(
+        "Host action '%s' on workshop %s (broadcast_sent=%s)",
+        action.value,
+        workshop_id,
+        broadcast_sent,
+    )
+
+    return HostActionResponse(
+        status="accepted",
+        action=action,
+        broadcast_sent=broadcast_sent,
+    )

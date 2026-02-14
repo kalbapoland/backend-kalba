@@ -41,8 +41,13 @@ class DailyService:
         duration_minutes: int,
     ) -> dict:
         """Create a Daily.co room. Returns the full room JSON."""
-        # Room auto-expires 10 minutes after workshop ends
-        exp = start_time + timedelta(minutes=duration_minutes + 10)
+        # Room auto-expires 10 minutes after workshop ends,
+        # but never in the past (for workshops already in progress)
+        now_utc = datetime.now(UTC)
+        exp = max(
+            start_time.replace(tzinfo=UTC) + timedelta(minutes=duration_minutes + 10),
+            now_utc + timedelta(minutes=10),
+        )
 
         properties = {
             "max_participants": max_participants + 1,  # +1 for host
@@ -67,6 +72,29 @@ class DailyService:
             raise DailyServiceError(resp.status_code, resp.text)
 
         return resp.json()
+
+    async def send_app_message(
+        self,
+        room_name: str,
+        data: dict,
+        *,
+        recipient: str = "*",
+    ) -> None:
+        """Send an app-message to participants in a Daily room."""
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{DAILY_API_BASE}/rooms/{room_name}/send-app-message",
+                headers=self._headers,
+                json={"data": data, "recipient": recipient},
+            )
+
+        if resp.status_code != 200:
+            logger.error(
+                "Daily send_app_message failed: %s %s",
+                resp.status_code,
+                resp.text,
+            )
+            raise DailyServiceError(resp.status_code, resp.text)
 
     async def delete_room(self, room_name: str) -> None:
         """Delete a Daily.co room."""
@@ -130,6 +158,6 @@ class DailyService:
         return hmac.compare_digest(expected, signature)
 
 
-def get_daily_service(settings: Settings | None = None) -> DailyService:
+def get_daily_service() -> DailyService:
     """Factory / FastAPI dependency."""
-    return DailyService(settings)
+    return DailyService()

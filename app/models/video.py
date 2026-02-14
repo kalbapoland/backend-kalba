@@ -13,6 +13,13 @@ class LateJoinBehavior(str, enum.Enum):
     DENY = "deny"
 
 
+class HostActionType(str, enum.Enum):
+    MUTE_ALL = "mute_all"
+    UNMUTE_ALL = "unmute_all"
+    CAMERAS_OFF_ALL = "cameras_off_all"
+    CAMERAS_ON_ALL = "cameras_on_all"
+
+
 class ParticipantRole(str, enum.Enum):
     HOST = "host"
     PARTICIPANT = "participant"
@@ -28,6 +35,8 @@ class WorkshopRules(SQLModel, table=True):
     allow_unmute_after: int = Field(default=0)  # seconds; 0 = immediately
     allow_camera_toggle: bool = False
     late_join_behavior: LateJoinBehavior = Field(default=LateJoinBehavior.ALLOW_MUTED)
+    all_muted: bool = False
+    all_cameras_off: bool = False
 
     workshop: Optional["Workshop"] = Relationship(back_populates="rules")
 
@@ -47,6 +56,8 @@ class RulesRead(BaseModel):
     force_mic_muted_on_join: bool
     allow_unmute_after: int
     allow_camera_toggle: bool
+    all_muted: bool
+    all_cameras_off: bool
 
 
 class JoinResponse(BaseModel):
@@ -57,5 +68,11 @@ class JoinResponse(BaseModel):
 
 
 class HostAction(BaseModel):
-    action: str  # "mute_all" | "remove_participant" | "lock_room"
+    action: HostActionType
     target_user_id: UUID | None = None
+
+
+class HostActionResponse(BaseModel):
+    status: str
+    action: HostActionType
+    broadcast_sent: bool

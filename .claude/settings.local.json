@@ -13,7 +13,9 @@
       "Bash(uv add:*)",
       "Bash(docker compose:*)",
       "Bash(/Users/bartlomiejpalus/Documents/Projects/kalba/backend-kalba/.venv/bin/alembic upgrade head:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "WebFetch(domain:docs.daily.co)",
+      "Bash(alembic revision:*)"
     ]
   }
 }
