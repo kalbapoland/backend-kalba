@@ -117,7 +117,7 @@ async def join_workshop(
     force_camera_on = rules_row.force_camera_on if rules_row else True
     force_mic_muted = rules_row.force_mic_muted_on_join if rules_row else True
     allow_unmute_after = rules_row.allow_unmute_after if rules_row else 0
-    allow_camera_toggle = rules_row.allow_camera_toggle if rules_row else False
+    allow_camera_toggle = rules_row.allow_camera_toggle if rules_row else True
     all_muted = rules_row.all_muted if rules_row else False
     all_cameras_off = rules_row.all_cameras_off if rules_row else False
 
@@ -189,7 +189,7 @@ async def get_workshop_rules(
         if rules_row
         else True,
         allow_unmute_after=rules_row.allow_unmute_after if rules_row else 0,
-        allow_camera_toggle=rules_row.allow_camera_toggle if rules_row else False,
+        allow_camera_toggle=rules_row.allow_camera_toggle if rules_row else True,
         all_muted=rules_row.all_muted if rules_row else False,
         all_cameras_off=rules_row.all_cameras_off if rules_row else False,
     )

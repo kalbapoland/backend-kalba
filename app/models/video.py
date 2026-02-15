@@ -33,7 +33,7 @@ class WorkshopRules(SQLModel, table=True):
     force_camera_on: bool = True
     force_mic_muted_on_join: bool = True
     allow_unmute_after: int = Field(default=0)  # seconds; 0 = immediately
-    allow_camera_toggle: bool = False
+    allow_camera_toggle: bool = True
     late_join_behavior: LateJoinBehavior = Field(default=LateJoinBehavior.ALLOW_MUTED)
     all_muted: bool = False
     all_cameras_off: bool = False
