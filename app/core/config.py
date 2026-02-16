@@ -1,0 +1,77 @@
+from enum import Enum
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Environment(str, Enum):
+    LOCAL = "local"
+    DEV = "dev"
+    STAGE = "stage"
+    PROD = "prod"
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env.local",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        env_ignore_empty=True,
+    )
+
+    app_env: Environment = Environment.LOCAL
+    debug: bool = False
+
+    # Database
+    database_url: str = "postgresql://postgres:postgres@localhost:5432/kalba"
+
+    # JWT
+    jwt_secret_key: str = "change-me-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 60 * 24 * 7  # 1 week
+
+    # Google OAuth
+    google_client_id: str = ""
+    google_ios_client_id: str = ""
+
+    # Daily.co
+    daily_api_key: str = ""
+    daily_domain: str = ""  # e.g. "kalba.daily.co"
+
+    # CORS
+    cors_origins: list[str] = ["*"]
+
+    @property
+    def pg_url(self) -> str:
+        """Normalized postgresql:// URL (Fly.io sets postgres:// which SQLAlchemy rejects)."""
+        url = self.database_url
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        return url
+
+    @property
+    def env_file_for_environment(self) -> str:
+        return f".env.{self.app_env.value}"
+
+
+def _build_settings() -> Settings:
+    """Build settings, loading the correct .env file based on APP_ENV."""
+    from pathlib import Path
+
+    # First pass: read APP_ENV from default .env.local or environment
+    preliminary = Settings()
+    env_file = preliminary.env_file_for_environment
+
+    # In production / containers the .env file may not exist —
+    # all config comes from real environment variables.
+    if not Path(env_file).is_file():
+        env_file = None  # type: ignore[assignment]
+
+    return Settings(
+        _env_file=env_file,  # type: ignore[call-arg]
+    )
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return _build_settings()

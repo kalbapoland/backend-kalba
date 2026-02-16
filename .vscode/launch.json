@@ -1,0 +1,34 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "FastAPI (Port 8000)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--reload", "--port", "8000"],
+      "envFile": "${workspaceFolder}/.env.local",
+      "jinja": true,
+      "subProcess": true,
+      "description": "Runs FastAPI server on localhost:8000. Uses .env.local for environment variables.",
+      "presentation": {
+        "order": 1
+      }
+    },
+    {
+      "name": "backend-kalba (Host 0.0.0.0)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--reload", "--host", "0.0.0.0"],
+      "envFile": "${workspaceFolder}/.env.local",
+      "jinja": true,
+      "subProcess": true,
+      "python": "${command:python.interpreterPath}",
+      "description": "Runs FastAPI server on all network interfaces (0.0.0.0). Uses .env.local for environment variables. Equivalent to: uv run uvicorn app.main:app --reload --host 0.0.0.0",
+      "presentation": {
+        "order": 2
+      }
+    }
+  ]
+}

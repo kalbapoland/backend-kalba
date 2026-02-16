@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/bartlomiejpalus/Documents/Projects/backend-kalba log --oneline -5)",
+      "Bash(uv init:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv python install:*)",
+      "Bash(uv python pin:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill -9 sleep 1)",
+      "Bash(xargs kill:*)",
+      "Bash(uv run python:*)",
+      "Bash(uv add:*)",
+      "Bash(docker compose:*)",
+      "Bash(/Users/bartlomiejpalus/Documents/Projects/kalba/backend-kalba/.venv/bin/alembic upgrade head:*)",
+      "Bash(python:*)",
+      "WebFetch(domain:docs.daily.co)",
+      "Bash(alembic revision:*)",
+      "Bash(docker build:*)",
+      "Bash(curl:*)",
+      "Bash(fly status:*)",
+      "Bash(fly secrets list:*)",
+      "Bash(fly machine list:*)",
+      "Bash(fly postgres attach:*)",
+      "Bash(fly logs:*)"
+    ]
+  }
+}
