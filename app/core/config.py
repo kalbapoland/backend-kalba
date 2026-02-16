@@ -16,6 +16,7 @@ class Settings(BaseSettings):
         env_file=".env.local",
         env_file_encoding="utf-8",
         extra="ignore",
+        env_ignore_empty=True,
     )
 
     app_env: Environment = Environment.LOCAL
@@ -41,17 +42,33 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["*"]
 
     @property
+    def pg_url(self) -> str:
+        """Normalized postgresql:// URL (Fly.io sets postgres:// which SQLAlchemy rejects)."""
+        url = self.database_url
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        return url
+
+    @property
     def env_file_for_environment(self) -> str:
         return f".env.{self.app_env.value}"
 
 
 def _build_settings() -> Settings:
     """Build settings, loading the correct .env file based on APP_ENV."""
+    from pathlib import Path
+
     # First pass: read APP_ENV from default .env.local or environment
     preliminary = Settings()
-    # Second pass: reload with the environment-specific file
+    env_file = preliminary.env_file_for_environment
+
+    # In production / containers the .env file may not exist —
+    # all config comes from real environment variables.
+    if not Path(env_file).is_file():
+        env_file = None  # type: ignore[assignment]
+
     return Settings(
-        _env_file=preliminary.env_file_for_environment,  # type: ignore[call-arg]
+        _env_file=env_file,  # type: ignore[call-arg]
     )
 
 

@@ -131,3 +131,71 @@ The API is available at `http://localhost:8000`. Open `http://localhost:8000/doc
 | GET    | `/api/v1/users/me`      | Bearer   | Get current user profile       |
 | GET    | `/api/v1/workshops/`    | No       | List upcoming workshops        |
 | POST   | `/api/v1/workshops/`    | Bearer (trainer only) | Create a workshop |
+
+## Deployment (Fly.io)
+
+The app is containerized with Docker and configured for [Fly.io](https://fly.io) deployment.
+
+### Prerequisites
+
+- [Fly CLI](https://fly.io/docs/flyctl/install/) installed
+- Authenticated: `fly auth login`
+
+### First-time setup
+
+1. **Create the app** (from the project root):
+
+```bash
+fly launch --no-deploy
+```
+
+This creates the app on your Fly.io account and updates `fly.toml` with the assigned app name. The `app` field in `fly.toml` ties all future deploys to that specific app/account.
+
+2. **Create and attach a Postgres database**:
+
+```bash
+fly postgres create --name kalba-db --region ams
+fly postgres attach kalba-db
+```
+
+This automatically sets the `DATABASE_URL` secret on the app.
+
+3. **Set secrets** (environment variables):
+
+```bash
+fly secrets set \
+  JWT_SECRET_KEY="$(openssl rand -hex 32)" \
+  GOOGLE_CLIENT_ID="your-google-client-id" \
+  GOOGLE_IOS_CLIENT_ID="your-ios-client-id" \
+  DAILY_API_KEY="your-daily-api-key" \
+  DAILY_DOMAIN="kalba.daily.co"
+```
+
+### Deploy
+
+```bash
+fly deploy
+```
+
+Alembic migrations run automatically on each deploy before the server starts.
+
+### Production URL
+
+The app is available at: `https://backend-kalba.fly.dev`
+
+- Health check: `https://backend-kalba.fly.dev/health`
+- Swagger docs: `https://backend-kalba.fly.dev/docs`
+
+### Useful commands
+
+```bash
+fly status              # App status and machines
+fly logs                # Stream live logs
+fly ssh console         # SSH into the running machine
+fly secrets list        # List set secrets (values hidden)
+fly postgres connect kalba-db  # Connect to the database via psql
+```
+
+### How Fly.io knows where to deploy
+
+The `app` field in `fly.toml` identifies the target app. When you run `fly launch`, it creates an app under your currently authenticated account (`fly auth whoami`) and writes the app name into `fly.toml`. All subsequent `fly deploy` commands read this name and deploy to that app. If you need to switch accounts, run `fly auth login` again.

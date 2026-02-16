@@ -15,7 +15,14 @@
       "Bash(/Users/bartlomiejpalus/Documents/Projects/kalba/backend-kalba/.venv/bin/alembic upgrade head:*)",
       "Bash(python:*)",
       "WebFetch(domain:docs.daily.co)",
-      "Bash(alembic revision:*)"
+      "Bash(alembic revision:*)",
+      "Bash(docker build:*)",
+      "Bash(curl:*)",
+      "Bash(fly status:*)",
+      "Bash(fly secrets list:*)",
+      "Bash(fly machine list:*)",
+      "Bash(fly postgres attach:*)",
+      "Bash(fly logs:*)"
     ]
   }
 }

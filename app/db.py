@@ -12,7 +12,7 @@ def _async_url(url: str) -> str:
 
 
 engine = create_async_engine(
-    _async_url(get_settings().database_url),
+    _async_url(get_settings().pg_url),
     echo=get_settings().debug,
 )
 
