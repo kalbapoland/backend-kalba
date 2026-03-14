@@ -43,20 +43,21 @@ async def join_workshop(
     if workshop is None:
         raise HTTPException(status_code=404, detail="Workshop not found")
 
-    # 2. Time window check (5 min early, up to 10 min after end)
-    now = datetime.now(UTC).replace(tzinfo=None)
-    earliest_join = workshop.start_time - timedelta(minutes=5)
-    latest_join = workshop.start_time + timedelta(
-        minutes=workshop.duration_minutes + 10
-    )
-    if now < earliest_join:
-        raise HTTPException(status_code=403, detail="Workshop has not started yet")
-    if now > latest_join:
-        raise HTTPException(status_code=403, detail="Workshop has ended")
-
-    # 3. Determine role
+    # 2. Determine role (needed before time check so host can join early)
     is_host = user_id == workshop.trainer_id
     role = ParticipantRole.HOST if is_host else ParticipantRole.PARTICIPANT
+
+    # 3. Time window check (host can join anytime; participants 5 min early, up to 10 min after end)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    if not is_host:
+        earliest_join = workshop.start_time - timedelta(minutes=5)
+        latest_join = workshop.start_time + timedelta(
+            minutes=workshop.duration_minutes + 10
+        )
+        if now < earliest_join:
+            raise HTTPException(status_code=403, detail="Workshop has not started yet")
+        if now > latest_join:
+            raise HTTPException(status_code=403, detail="Workshop has ended")
 
     # 4. Capacity check (skip for host)
     if not is_host:

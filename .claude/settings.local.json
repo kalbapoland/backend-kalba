@@ -22,7 +22,20 @@
       "Bash(fly secrets list:*)",
       "Bash(fly machine list:*)",
       "Bash(fly postgres attach:*)",
-      "Bash(fly logs:*)"
+      "Bash(fly logs:*)",
+      "Bash(fly ssh console -C \"echo DATABASE_URL=$DATABASE_URL\")",
+      "Bash(fly postgres config show -a kalba-db)",
+      "Bash(fly machine run registry.fly.io/backend-kalba:deployment-01KJAF5ZZ44MNEH3E01VPZ0XBV --env APP_ENV=prod -e \"CMD=env | grep DATABASE_URL\" --command \"/bin/sh -c ''env | grep DATABASE_URL''\")",
+      "Bash(fly ssh console -a backend-kalba -s -C \"env | grep -E ''DATABASE_URL''\")",
+      "Bash(fly ssh console -a backend-kalba -s -C \"printenv DATABASE_URL\")",
+      "Bash(fly ssh console -a backend-kalba -s -C \"printenv DATABASE_URL\" --select)",
+      "Bash(fly ssh console -a backend-kalba -C \"printenv DATABASE_URL\" -A e825997f25d568)",
+      "Bash(fly machine exec e825997f25d568 \"printenv DATABASE_URL\")",
+      "Bash(fly secrets set DATABASE_URL=\"postgresql+asyncpg://postgres:XkuwxPjne7SiSwj@kalba-db.flycast:5432/postgres?sslmode=disable\")",
+      "Bash(fly machine destroy e825997f25d568 --force)",
+      "Bash(fly machine run registry.fly.io/backend-kalba:deployment-01KJAFPWTP9T0SPSE2VFBEDGYX --command \"/bin/sh\" --env DATABASE_URL=\"postgresql+asyncpg://postgres:XkuwxPjne7SiSwj@kalba-db.flycast:5432/postgres?sslmode=require\" -e APP_ENV=prod)",
+      "Bash(fly machine exec 2867003b910de8 \"python -c \"\":*)",
+      "Bash(fly machine exec 2867003b910de8 \"/app/.venv/bin/python -c \"\":*)"
     ]
   }
 }
