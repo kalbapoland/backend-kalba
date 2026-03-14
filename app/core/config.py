@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     # Google OAuth
     google_client_id: str = ""
     google_ios_client_id: str = ""
+    google_android_client_id: str = ""
 
     # Daily.co
     daily_api_key: str = ""
