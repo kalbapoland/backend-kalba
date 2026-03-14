@@ -37,7 +37,7 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgresql+asyncpg://kalba:kalba@localhost:5432/kalba_test
+      DATABASE_URL: postgresql://kalba:kalba@localhost:5432/kalba_test
       JWT_SECRET_KEY: ci-secret-key-not-for-production
       GOOGLE_CLIENT_ID: dummy-client-id
       DAILY_API_KEY: dummy-daily-key
@@ -54,12 +54,10 @@ jobs:
         run: uv python install 3.13
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --all-groups
 
       - name: Run migrations
         run: uv run alembic upgrade head
 
       - name: Run tests
         run: uv run pytest -q --tb=short
-        # TODO: Usuń continue-on-error gdy zostaną dodane pierwsze testy
-        continue-on-error: true
