@@ -1,0 +1,65 @@
+name: CI — Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "migrations/**"
+      - "pyproject.toml"
+      - "uv.lock"
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "migrations/**"
+      - "pyproject.toml"
+      - "uv.lock"
+
+jobs:
+  test:
+    name: Pytest
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: kalba
+          POSTGRES_PASSWORD: kalba
+          POSTGRES_DB: kalba_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://kalba:kalba@localhost:5432/kalba_test
+      JWT_SECRET_KEY: ci-secret-key-not-for-production
+      GOOGLE_CLIENT_ID: dummy-client-id
+      DAILY_API_KEY: dummy-daily-key
+      DAILY_DOMAIN: dummy.daily.co
+      APP_ENV: local
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run migrations
+        run: uv run alembic upgrade head
+
+      - name: Run tests
+        run: uv run pytest -q --tb=short
+        # TODO: Usuń continue-on-error gdy zostaną dodane pierwsze testy
+        continue-on-error: true
