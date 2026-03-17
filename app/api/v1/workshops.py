@@ -27,7 +27,9 @@ async def list_workshops(
         Workshop.start_time >= datetime.now(UTC).replace(tzinfo=None)
     )
     result = await session.exec(statement)
-    return result.all()
+    rows = result.all()
+    logger.info("Returning %d upcoming workshops", len(rows))
+    return rows
 
 
 @router.get("/{workshop_id}", response_model=WorkshopRead)
@@ -39,6 +41,7 @@ async def get_workshop(
     workshop = await session.get(Workshop, workshop_id)
     if workshop is None:
         raise HTTPException(status_code=404, detail="Workshop not found")
+    logger.info("Workshop %s retrieved", workshop_id)
     return workshop
 
 
@@ -84,6 +87,7 @@ async def create_workshop(
 
     await session.commit()
     await session.refresh(workshop)
+    logger.info("Workshop %s created by trainer %s", workshop.id, user_id)
     return workshop
 
 
@@ -120,6 +124,11 @@ async def update_workshop(
     session.add(workshop)
     await session.commit()
     await session.refresh(workshop)
+    logger.info(
+        "Workshop %s updated; fields changed: %s",
+        workshop_id,
+        ",".join(update_data.keys()) if update_data else "none",
+    )
     return workshop
 
 
@@ -140,6 +149,8 @@ async def delete_workshop(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the workshop creator can delete this workshop",
         )
+
+    logger.info("Deleting workshop %s (requested by %s)", workshop_id, user_id)
 
     # Clean up Daily.co room if one was created
     if workshop.video_room_id:
@@ -162,3 +173,4 @@ async def delete_workshop(
 
     await session.delete(workshop)
     await session.commit()
+    logger.info("Workshop %s deleted", workshop_id)

@@ -1,11 +1,15 @@
 from uuid import UUID
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.security import get_current_user_id
 from app.db import get_db_session
 from app.models.user import User, UserRead
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -21,4 +25,5 @@ async def get_me(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
+    logger.info("Returning profile for user %s", user_id)
     return user

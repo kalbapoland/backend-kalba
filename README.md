@@ -90,6 +90,12 @@ Start the full local stack (Postgres + backend API):
 docker compose -f docker-compose.local.yml up --build -d
 ```
 
+Reload containers and ensure new code is applied (keeps Postgres data):
+
+```bash
+docker compose -f docker-compose.local.yml up --build --force-recreate -d
+```
+
 API will be available at `http://localhost:8000`.
 
 Stream logs:

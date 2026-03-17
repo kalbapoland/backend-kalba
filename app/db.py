@@ -35,7 +35,7 @@ _url, _connect_args = _prepare_async_url(get_settings().pg_url)
 
 engine = create_async_engine(
     _url,
-    echo=get_settings().debug,
+    echo=False,
     connect_args=_connect_args,
 )
 
