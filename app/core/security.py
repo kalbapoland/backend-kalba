@@ -69,11 +69,13 @@ async def verify_google_id_token(
 
     # Verify the token was issued for our app
     allowed_client_ids = {
-        cid for cid in (
+        cid
+        for cid in (
             settings.google_client_id,
             settings.google_ios_client_id,
             settings.google_android_client_id,
-        ) if cid
+        )
+        if cid
     }
     if allowed_client_ids and payload.get("aud") not in allowed_client_ids:
         raise HTTPException(

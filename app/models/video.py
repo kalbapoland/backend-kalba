@@ -1,10 +1,13 @@
 import enum
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 from sqlmodel import Field, Relationship, SQLModel
+
+if TYPE_CHECKING:
+    from app.models.workshop import Workshop
 
 
 class LateJoinBehavior(str, enum.Enum):

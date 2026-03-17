@@ -158,13 +158,43 @@ async def join_workshop(
 
 
 @router.post("/webhooks/daily", status_code=200)
-async def daily_webhook(request: Request):
+async def daily_webhook(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    daily: DailyService = Depends(get_daily_service),
+):
     """Receive Daily.co webhook events.
 
     MVP: log and acknowledge. Full enforcement (kick on camera-off
     violations) is a future enhancement.
     """
+    payload_body = await request.body()
     payload = await request.json()
+
+    # Daily sends an unsigned probe payload during webhook creation/update.
+    if payload == {"test": "test"}:
+        return {"status": "ok"}
+
+    if not settings.daily_webhook_secret:
+        logger.error("Daily webhook secret is not configured")
+        raise HTTPException(status_code=503, detail="Webhook not configured")
+
+    signature = request.headers.get("x-webhook-signature", "")
+    timestamp = request.headers.get("x-webhook-timestamp", "")
+
+    if (
+        not signature
+        or not timestamp
+        or not daily.verify_webhook_signature(
+            payload_body=payload_body,
+            signature=signature,
+            timestamp=timestamp,
+            webhook_secret=settings.daily_webhook_secret,
+        )
+    ):
+        logger.warning("Rejected Daily webhook due to invalid signature")
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
     event = payload.get("event", "unknown")
     logger.info("Daily webhook event: %s", event)
     return {"status": "ok"}

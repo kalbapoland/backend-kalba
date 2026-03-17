@@ -168,7 +168,28 @@ fly secrets set \
   GOOGLE_CLIENT_ID="your-google-client-id" \
   GOOGLE_IOS_CLIENT_ID="your-ios-client-id" \
   DAILY_API_KEY="your-daily-api-key" \
+  DAILY_WEBHOOK_SECRET="your-daily-webhook-secret" \
   DAILY_DOMAIN="kalba.daily.co"
+```
+
+## Daily Webhook Secret Setup
+
+Use the helper script to create a Daily webhook and get the secret value for
+`DAILY_WEBHOOK_SECRET`.
+
+Let Daily generate the secret:
+
+```bash
+uv run python scripts/setup_daily_webhook.py \
+  --url https://backend-kalba.fly.dev/api/v1/video/webhooks/daily
+```
+
+Provide your own base64 secret:
+
+```bash
+uv run python scripts/setup_daily_webhook.py \
+  --url https://backend-kalba.fly.dev/api/v1/video/webhooks/daily \
+  --hmac-base64 "<base64-secret>"
 ```
 
 ### Deploy

@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # Daily.co
     daily_api_key: str = ""
     daily_domain: str = ""  # e.g. "kalba.daily.co"
+    daily_webhook_secret: str = ""
 
     # CORS
     cors_origins: list[str] = ["*"]

@@ -11,7 +11,9 @@ from app.db import _prepare_async_url, get_db_session
 from app.main import app
 from app.models.user import User, UserRole
 
-_RAW_DB_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/kalba_test")
+_RAW_DB_URL = os.environ.get(
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/kalba_test"
+)
 
 
 @pytest.fixture
@@ -41,7 +43,9 @@ async def client(engine):
             yield session
 
     app.dependency_overrides[get_db_session] = _override
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as c:
         yield c
     app.dependency_overrides.clear()
 

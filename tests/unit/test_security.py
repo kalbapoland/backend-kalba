@@ -46,7 +46,9 @@ def test_decode_expired_token_raises_401():
         "sub": str(uuid4()),
         "exp": datetime.now(UTC) - timedelta(minutes=1),
     }
-    token = jwt.encode(expired_payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    token = jwt.encode(
+        expired_payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+    )
     with pytest.raises(HTTPException) as exc:
         decode_access_token(token, settings)
     assert exc.value.status_code == 401

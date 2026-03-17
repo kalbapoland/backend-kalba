@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import logging
+import base64
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -149,12 +150,21 @@ class DailyService:
 
     @staticmethod
     def verify_webhook_signature(
-        payload_body: bytes, signature: str, webhook_secret: str
+        payload_body: bytes,
+        signature: str,
+        timestamp: str,
+        webhook_secret: str,
     ) -> bool:
-        """Verify that a webhook payload was signed by Daily.co."""
-        expected = hmac.new(
-            webhook_secret.encode(), payload_body, hashlib.sha256
-        ).hexdigest()
+        """Verify Daily webhook signature using the shared base64 HMAC secret."""
+        try:
+            secret_bytes = base64.b64decode(webhook_secret, validate=True)
+        except ValueError:
+            return False
+
+        signed_payload = timestamp.encode() + b"." + payload_body
+        expected = base64.b64encode(
+            hmac.new(secret_bytes, signed_payload, hashlib.sha256).digest()
+        ).decode()
         return hmac.compare_digest(expected, signature)
 
 

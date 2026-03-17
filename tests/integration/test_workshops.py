@@ -27,7 +27,9 @@ async def test_list_workshops_returns_empty_list(client):
     assert resp.json() == []
 
 
-async def test_list_workshops_returns_created_workshops(client, trainer_token, workshop_payload):
+async def test_list_workshops_returns_created_workshops(
+    client, trainer_token, workshop_payload
+):
     await client.post(
         "/api/v1/workshops/",
         json=workshop_payload,
@@ -55,7 +57,9 @@ async def test_create_workshop_as_trainer(client, trainer_token, workshop_payloa
     assert "id" in data
 
 
-async def test_create_workshop_as_regular_user_is_forbidden(client, user_token, workshop_payload):
+async def test_create_workshop_as_regular_user_is_forbidden(
+    client, user_token, workshop_payload
+):
     resp = await client.post(
         "/api/v1/workshops/",
         json=workshop_payload,
