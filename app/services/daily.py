@@ -69,7 +69,12 @@ class DailyService:
             )
 
         if resp.status_code != 200:
-            logger.error("Daily create_room failed: %s %s", resp.status_code, resp.text)
+            if "already exists" in resp.text.lower():
+                logger.info("Daily room %s already exists; continuing", name)
+            else:
+                logger.error(
+                    "Daily create_room failed: %s %s", resp.status_code, resp.text
+                )
             raise DailyServiceError(resp.status_code, resp.text)
 
         return resp.json()
