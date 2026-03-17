@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://postgres:postgres@localhost:5432/kalba"
 
     # JWT
-    jwt_secret_key: str = "change-me-in-production"
+    jwt_secret_key: str = "change-me-in-production-min-32-bytes"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7  # 1 week
 
@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # Daily.co
     daily_api_key: str = ""
     daily_domain: str = ""  # e.g. "kalba.daily.co"
+    daily_webhook_secret: str = ""
 
     # CORS
     cors_origins: list[str] = ["*"]

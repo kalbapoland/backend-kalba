@@ -1,6 +1,8 @@
 import hashlib
 import hmac
 import logging
+import base64
+import binascii
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -68,7 +70,15 @@ class DailyService:
             )
 
         if resp.status_code != 200:
-            logger.error("Daily create_room failed: %s %s", resp.status_code, resp.text)
+            if "already exists" in resp.text.lower():
+                logger.info(
+                    "Daily room %s already exists; raising DailyServiceError for caller to handle",
+                    name,
+                )
+            else:
+                logger.error(
+                    "Daily create_room failed: %s %s", resp.status_code, resp.text
+                )
             raise DailyServiceError(resp.status_code, resp.text)
 
         return resp.json()
@@ -149,12 +159,21 @@ class DailyService:
 
     @staticmethod
     def verify_webhook_signature(
-        payload_body: bytes, signature: str, webhook_secret: str
+        payload_body: bytes,
+        signature: str,
+        timestamp: str,
+        webhook_secret: str,
     ) -> bool:
-        """Verify that a webhook payload was signed by Daily.co."""
-        expected = hmac.new(
-            webhook_secret.encode(), payload_body, hashlib.sha256
-        ).hexdigest()
+        """Verify Daily webhook signature using the shared base64 HMAC secret."""
+        try:
+            secret_bytes = base64.b64decode(webhook_secret, validate=True)
+        except (ValueError, binascii.Error):
+            return False
+
+        signed_payload = timestamp.encode() + b"." + payload_body
+        expected = base64.b64encode(
+            hmac.new(secret_bytes, signed_payload, hashlib.sha256).digest()
+        ).decode()
         return hmac.compare_digest(expected, signature)
 
 

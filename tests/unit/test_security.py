@@ -14,7 +14,7 @@ def make_settings(**overrides) -> Settings:
         {
             "app_env": "local",
             "database_url": "postgresql://localhost/test",
-            "jwt_secret_key": "test-secret",
+            "jwt_secret_key": "test-secret-min-32-bytes-length-1234",
             "jwt_algorithm": "HS256",
             "jwt_expire_minutes": 60,
             "google_client_id": "",
@@ -46,7 +46,9 @@ def test_decode_expired_token_raises_401():
         "sub": str(uuid4()),
         "exp": datetime.now(UTC) - timedelta(minutes=1),
     }
-    token = jwt.encode(expired_payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    token = jwt.encode(
+        expired_payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+    )
     with pytest.raises(HTTPException) as exc:
         decode_access_token(token, settings)
     assert exc.value.status_code == 401
@@ -60,7 +62,13 @@ def test_decode_invalid_token_raises_401():
 
 def test_decode_token_wrong_secret_raises_401():
     user_id = uuid4()
-    token = create_access_token(user_id, make_settings(jwt_secret_key="secret-a"))
+    token = create_access_token(
+        user_id,
+        make_settings(jwt_secret_key="secret-a-min-32-bytes-length-1234"),
+    )
     with pytest.raises(HTTPException) as exc:
-        decode_access_token(token, make_settings(jwt_secret_key="secret-b"))
+        decode_access_token(
+            token,
+            make_settings(jwt_secret_key="secret-b-min-32-bytes-length-1234"),
+        )
     assert exc.value.status_code == 401

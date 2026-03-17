@@ -66,23 +66,45 @@ uv sync
 
 ### Configure environment
 
-Copy and edit the local env file:
+Edit `.env.local`.
+
+If the file does not exist in your clone, create it and add at least:
+
+- `JWT_SECRET_KEY`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_IOS_CLIENT_ID`
+- `GOOGLE_ANDROID_CLIENT_ID`
+- `DAILY_API_KEY`
+- `DAILY_DOMAIN`
+- `DAILY_WEBHOOK_SECRET`
+
+When running with Docker Compose, `DATABASE_URL` is injected automatically for
+the backend container (`postgres` service hostname), so you do not need to set
+it manually for that flow.
+
+### Run API + Database in Docker
+
+Start the full local stack (Postgres + backend API):
 
 ```bash
-cp .env.local .env.local  # already provided as a template
+docker compose -f docker-compose.local.yml up --build -d
 ```
 
-Update `JWT_SECRET_KEY` and `GOOGLE_CLIENT_ID` with your values.
-
-### Database (Docker)
-
-Start the local PostgreSQL database:
+Reload containers and ensure new code is applied (keeps Postgres data):
 
 ```bash
-docker compose -f docker-compose.local.yml up -d
+docker compose -f docker-compose.local.yml up --build --force-recreate -d
 ```
 
-Stop the database (data is preserved):
+API will be available at `http://localhost:8000`.
+
+Stream logs:
+
+```bash
+docker compose -f docker-compose.local.yml logs -f backend
+```
+
+Stop the stack (data is preserved):
 
 ```bash
 docker compose -f docker-compose.local.yml down
@@ -92,6 +114,14 @@ Stop and wipe all data:
 
 ```bash
 docker compose -f docker-compose.local.yml down -v
+```
+
+### Database only (optional)
+
+If you want to run FastAPI directly on your machine but keep PostgreSQL in Docker:
+
+```bash
+docker compose -f docker-compose.local.yml up -d postgres
 ```
 
 ### Migrations (Alembic)
@@ -114,7 +144,7 @@ Rollback the last migration:
 uv run python -m alembic downgrade -1
 ```
 
-### Start the server
+### Start the server (without Docker)
 
 ```bash
 uv run uvicorn app.main:app --reload
@@ -168,7 +198,28 @@ fly secrets set \
   GOOGLE_CLIENT_ID="your-google-client-id" \
   GOOGLE_IOS_CLIENT_ID="your-ios-client-id" \
   DAILY_API_KEY="your-daily-api-key" \
+  DAILY_WEBHOOK_SECRET="your-daily-webhook-secret" \
   DAILY_DOMAIN="kalba.daily.co"
+```
+
+## Daily Webhook Secret Setup
+
+Use the helper script to create a Daily webhook and get the secret value for
+`DAILY_WEBHOOK_SECRET`.
+
+Let Daily generate the secret:
+
+```bash
+uv run python scripts/setup_daily_webhook.py \
+  --url https://backend-kalba.fly.dev/api/v1/video/webhooks/daily
+```
+
+Provide your own base64 secret:
+
+```bash
+uv run python scripts/setup_daily_webhook.py \
+  --url https://backend-kalba.fly.dev/api/v1/video/webhooks/daily \
+  --hmac-base64 "<base64-secret>"
 ```
 
 ### Deploy

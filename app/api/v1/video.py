@@ -37,6 +37,9 @@ async def join_workshop(
     daily: DailyService = Depends(get_daily_service),
 ):
     """Request a meeting token to join a workshop video call."""
+    logger.info(
+        "Join workshop request received (workshop=%s, user=%s)", workshop_id, user_id
+    )
 
     # 1. Load workshop
     workshop = await session.get(Workshop, workshop_id)
@@ -92,21 +95,20 @@ async def join_workshop(
         session.add(existing)
     await session.commit()
 
-    # 6. Ensure Daily room exists (created on first join)
-    room_name = workshop.video_room_id or f"kalba-{workshop.id}"
-    try:
-        await daily.create_room(
-            name=room_name,
-            max_participants=workshop.max_participants,
-            start_time=workshop.start_time,
-            duration_minutes=workshop.duration_minutes,
-        )
-    except DailyServiceError as exc:
-        # 409 / "already-exists" is fine — room was created by a previous join
-        if "already exists" not in exc.detail:
+    # 6. Ensure Daily room exists (create only on first join)
+    if not workshop.video_room_id:
+        room_name = f"kalba-{workshop.id}"
+        try:
+            await daily.create_room(
+                name=room_name,
+                max_participants=workshop.max_participants,
+                start_time=workshop.start_time,
+                duration_minutes=workshop.duration_minutes,
+            )
+        except DailyServiceError as exc:
             logger.error("Failed to create Daily room on join: %s", exc.detail)
             raise HTTPException(status_code=502, detail="Video service unavailable")
-    if not workshop.video_room_id:
+
         workshop.video_room_id = room_name
         session.add(workshop)
         await session.commit()
@@ -142,6 +144,13 @@ async def join_workshop(
 
     room_url = f"https://{settings.daily_domain}/{workshop.video_room_id}"
 
+    logger.info(
+        "Join token issued for workshop %s (user=%s, role=%s)",
+        workshop_id,
+        user_id,
+        role.value,
+    )
+
     return JoinResponse(
         token=token,
         room_url=room_url,
@@ -158,15 +167,48 @@ async def join_workshop(
 
 
 @router.post("/webhooks/daily", status_code=200)
-async def daily_webhook(request: Request):
+async def daily_webhook(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    daily: DailyService = Depends(get_daily_service),
+):
     """Receive Daily.co webhook events.
 
     MVP: log and acknowledge. Full enforcement (kick on camera-off
     violations) is a future enhancement.
     """
+    payload_body = await request.body()
     payload = await request.json()
+
+    # Daily sends an unsigned probe payload during webhook creation/update.
+    if payload == {"test": "test"}:
+        logger.info("Daily webhook probe acknowledged")
+        return {"status": "ok"}
+
+    if not settings.daily_webhook_secret:
+        logger.error("Daily webhook secret is not configured")
+        raise HTTPException(status_code=503, detail="Webhook not configured")
+
+    signature = request.headers.get("x-webhook-signature", "")
+    timestamp = request.headers.get("x-webhook-timestamp", "")
+    is_valid_signature = bool(
+        signature and timestamp
+    ) and daily.verify_webhook_signature(
+        payload_body=payload_body,
+        signature=signature,
+        timestamp=timestamp,
+        webhook_secret=settings.daily_webhook_secret,
+    )
+
+    if not is_valid_signature:
+        logger.warning("Rejected Daily webhook due to invalid signature")
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    logger.info("Daily webhook signature verified")
+
     event = payload.get("event", "unknown")
     logger.info("Daily webhook event: %s", event)
+    logger.info("Daily webhook processed successfully")
     return {"status": "ok"}
 
 
@@ -177,12 +219,19 @@ async def get_workshop_rules(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Get current workshop rules including live host-enforced state."""
+    logger.info(
+        "Fetching workshop rules (workshop=%s, user=%s)",
+        workshop_id,
+        user_id,
+    )
     workshop = await session.get(Workshop, workshop_id)
     if workshop is None:
         raise HTTPException(status_code=404, detail="Workshop not found")
 
     rules_stmt = select(WorkshopRules).where(WorkshopRules.workshop_id == workshop_id)
     rules_row = (await session.exec(rules_stmt)).first()
+
+    logger.info("Workshop rules returned for workshop %s", workshop_id)
 
     return RulesRead(
         force_camera_on=rules_row.force_camera_on if rules_row else True,
@@ -208,6 +257,12 @@ async def host_action(
     daily: DailyService = Depends(get_daily_service),
 ):
     """Host-only actions: mute/unmute all, cameras on/off all."""
+    logger.info(
+        "Host action request received (workshop=%s, user=%s, action=%s)",
+        workshop_id,
+        user_id,
+        body.action.value,
+    )
     workshop = await session.get(Workshop, workshop_id)
     if workshop is None:
         raise HTTPException(status_code=404, detail="Workshop not found")

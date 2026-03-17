@@ -7,6 +7,7 @@ from pydantic import BaseModel, field_validator
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.models.user import User
+from app.models.video import WorkshopRules, WorkshopParticipant
 
 
 class Workshop(SQLModel, table=True):

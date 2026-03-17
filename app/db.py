@@ -33,9 +33,11 @@ def _prepare_async_url(url: str) -> tuple[str, dict]:
 
 _url, _connect_args = _prepare_async_url(get_settings().pg_url)
 
+# Allow SQL echo to be controlled from settings/profile (env .env.local, etc.)
+_settings = get_settings()
 engine = create_async_engine(
     _url,
-    echo=get_settings().debug,
+    echo=bool(_settings.debug),
     connect_args=_connect_args,
 )
 
