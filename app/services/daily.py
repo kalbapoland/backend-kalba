@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import logging
 import base64
+import binascii
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -163,7 +164,7 @@ class DailyService:
         """Verify Daily webhook signature using the shared base64 HMAC secret."""
         try:
             secret_bytes = base64.b64decode(webhook_secret, validate=True)
-        except ValueError:
+        except (ValueError, binascii.Error):
             return False
 
         signed_payload = timestamp.encode() + b"." + payload_body
