@@ -95,21 +95,20 @@ async def join_workshop(
         session.add(existing)
     await session.commit()
 
-    # 6. Ensure Daily room exists (created on first join)
-    room_name = workshop.video_room_id or f"kalba-{workshop.id}"
-    try:
-        await daily.create_room(
-            name=room_name,
-            max_participants=workshop.max_participants,
-            start_time=workshop.start_time,
-            duration_minutes=workshop.duration_minutes,
-        )
-    except DailyServiceError as exc:
-        # 409 / "already-exists" is fine — room was created by a previous join
-        if "already exists" not in exc.detail:
+    # 6. Ensure Daily room exists (create only on first join)
+    if not workshop.video_room_id:
+        room_name = f"kalba-{workshop.id}"
+        try:
+            await daily.create_room(
+                name=room_name,
+                max_participants=workshop.max_participants,
+                start_time=workshop.start_time,
+                duration_minutes=workshop.duration_minutes,
+            )
+        except DailyServiceError as exc:
             logger.error("Failed to create Daily room on join: %s", exc.detail)
             raise HTTPException(status_code=502, detail="Video service unavailable")
-    if not workshop.video_room_id:
+
         workshop.video_room_id = room_name
         session.add(workshop)
         await session.commit()

@@ -10,6 +10,7 @@ from app.core.config import get_settings
 # Configure root logger to ensure INFO logs from app are emitted
 logging.basicConfig(level=logging.INFO)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup

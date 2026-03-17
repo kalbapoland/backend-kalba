@@ -38,7 +38,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://kalba:kalba@localhost:5432/kalba_test
-      JWT_SECRET_KEY: ci-secret-key-not-for-production
+      JWT_SECRET_KEY: ci-secret-key-not-for-production-min-32-bytes
       GOOGLE_CLIENT_ID: dummy-client-id
       DAILY_API_KEY: dummy-daily-key
       DAILY_DOMAIN: dummy.daily.co
