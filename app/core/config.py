@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "change-me-in-production-min-32-bytes"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7  # 1 week
+    refresh_token_expire_days: int = 30
 
     # Google OAuth
     google_client_id: str = ""
@@ -41,7 +42,11 @@ class Settings(BaseSettings):
     daily_webhook_secret: str = ""
 
     # CORS
-    cors_origins: list[str] = ["*"]
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:8081",
+        "https://kalba.app",
+    ]
 
     @property
     def pg_url(self) -> str:

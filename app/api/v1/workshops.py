@@ -2,14 +2,14 @@ import logging
 from datetime import UTC, datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.security import get_current_user_id
 from app.db import get_db_session
 from app.models.user import User, UserRole
-from app.models.video import WorkshopParticipant, WorkshopRules
+from app.models.video import WorkshopRules
 from app.models.workshop import Workshop, WorkshopCreate, WorkshopRead, WorkshopUpdate
 from app.services.daily import DailyService, get_daily_service
 
@@ -37,11 +37,20 @@ def normalize_to_utc_naive(dt: datetime) -> datetime:
 
 @router.get("/", response_model=list[WorkshopRead])
 async def list_workshops(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_db_session),
 ):
     """List all upcoming workshops."""
-    statement = select(Workshop).where(
-        Workshop.start_time >= datetime.now(UTC).replace(tzinfo=None)
+    statement = (
+        select(Workshop)
+        .where(
+            Workshop.deleted_at.is_(None),
+            Workshop.start_time >= datetime.now(UTC).replace(tzinfo=None),
+        )
+        .order_by(Workshop.start_time)
+        .offset(skip)
+        .limit(limit)
     )
     result = await session.exec(statement)
     rows = result.all()
@@ -56,7 +65,7 @@ async def get_workshop(
 ):
     """Get a single workshop by ID."""
     workshop = await session.get(Workshop, workshop_id)
-    if workshop is None:
+    if workshop is None or workshop.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Workshop not found")
     logger.info("Workshop %s retrieved", workshop_id)
     return workshop
@@ -116,7 +125,7 @@ async def update_workshop(
 ):
     """Update a workshop. Only the trainer who created it may edit it."""
     workshop = await session.get(Workshop, workshop_id)
-    if workshop is None:
+    if workshop is None or workshop.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Workshop not found")
 
     if workshop.trainer_id != user_id:
@@ -157,7 +166,7 @@ async def delete_workshop(
 ):
     """Delete a workshop. Only the trainer who created it may delete it."""
     workshop = await session.get(Workshop, workshop_id)
-    if workshop is None:
+    if workshop is None or workshop.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Workshop not found")
 
     if workshop.trainer_id != user_id:
@@ -172,21 +181,7 @@ async def delete_workshop(
     if workshop.video_room_id:
         await daily.delete_room(workshop.video_room_id)
 
-    # Delete related rows
-    participants = await session.exec(
-        select(WorkshopParticipant).where(
-            WorkshopParticipant.workshop_id == workshop_id
-        )
-    )
-    for p in participants.all():
-        await session.delete(p)
-
-    rules = await session.exec(
-        select(WorkshopRules).where(WorkshopRules.workshop_id == workshop_id)
-    )
-    for r in rules.all():
-        await session.delete(r)
-
-    await session.delete(workshop)
+    workshop.deleted_at = datetime.now(UTC).replace(tzinfo=None)
+    session.add(workshop)
     await session.commit()
-    logger.info("Workshop %s deleted", workshop_id)
+    logger.info("Workshop %s soft-deleted", workshop_id)

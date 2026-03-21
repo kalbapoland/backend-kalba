@@ -86,6 +86,19 @@ async def test_create_workshop_with_invalid_year_is_rejected(
     assert "Workshop year must be between" in resp.json()["detail"]
 
 
+async def test_create_workshop_with_past_date_is_rejected(
+    client, trainer_token, workshop_payload
+):
+    workshop_payload["start_time"] = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+    resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 422
+    assert "cannot be in the past" in str(resp.json()["detail"]).lower()
+
+
 # --- Get ---
 
 
@@ -173,6 +186,76 @@ async def test_update_workshop_with_invalid_year_is_rejected(
     )
     assert resp.status_code == 422
     assert "Workshop year must be between" in resp.json()["detail"]
+
+
+async def test_update_workshop_with_past_date_is_rejected(
+    client, trainer_token, workshop_payload
+):
+    create_resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    workshop_id = create_resp.json()["id"]
+
+    resp = await client.patch(
+        f"/api/v1/workshops/{workshop_id}",
+        json={"start_time": (datetime.now(UTC) - timedelta(hours=1)).isoformat()},
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 422
+    assert "cannot be in the past" in str(resp.json()["detail"]).lower()
+
+
+async def test_list_workshops_supports_skip_and_limit(
+    client, trainer_token, workshop_payload
+):
+    payload_1 = {**workshop_payload, "title": "Workshop 1"}
+    payload_2 = {
+        **workshop_payload,
+        "title": "Workshop 2",
+        "start_time": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
+    }
+    payload_3 = {
+        **workshop_payload,
+        "title": "Workshop 3",
+        "start_time": (datetime.now(UTC) + timedelta(days=3)).isoformat(),
+    }
+
+    for payload in (payload_1, payload_2, payload_3):
+        resp = await client.post(
+            "/api/v1/workshops/",
+            json=payload,
+            headers={"Authorization": f"Bearer {trainer_token}"},
+        )
+        assert resp.status_code == 201
+
+    first_page = await client.get("/api/v1/workshops/?skip=0&limit=2")
+    second_page = await client.get("/api/v1/workshops/?skip=2&limit=2")
+
+    assert first_page.status_code == 200
+    assert second_page.status_code == 200
+    assert len(first_page.json()) == 2
+    assert len(second_page.json()) == 1
+
+
+async def test_soft_deleted_workshop_is_not_listed(client, trainer_token, workshop_payload):
+    create_resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    workshop_id = create_resp.json()["id"]
+
+    delete_resp = await client.delete(
+        f"/api/v1/workshops/{workshop_id}",
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert delete_resp.status_code == 204
+
+    list_resp = await client.get("/api/v1/workshops/")
+    assert list_resp.status_code == 200
+    assert all(row["id"] != workshop_id for row in list_resp.json())
 
 
 # --- Delete ---

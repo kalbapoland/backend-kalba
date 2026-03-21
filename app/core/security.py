@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+import hashlib
 from uuid import UUID
 
 import httpx
@@ -25,6 +26,27 @@ def create_access_token(user_id: UUID, settings: Settings | None = None) -> str:
     )
 
 
+def create_refresh_token(
+    user_id: UUID,
+    *,
+    token_id: UUID,
+    settings: Settings | None = None,
+) -> str:
+    settings = settings or get_settings()
+    expire = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
+    payload = {
+        "sub": str(user_id),
+        "jti": str(token_id),
+        "typ": "refresh",
+        "exp": expire,
+    }
+    return jwt.encode(
+        payload,
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
 def decode_access_token(token: str, settings: Settings | None = None) -> dict:
     settings = settings or get_settings()
     try:
@@ -43,6 +65,25 @@ def decode_access_token(token: str, settings: Settings | None = None) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
         )
+
+
+def decode_refresh_token(token: str, settings: Settings | None = None) -> dict:
+    payload = decode_access_token(token, settings)
+    if payload.get("typ") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+    if "jti" not in payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+    return payload
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 async def verify_google_id_token(

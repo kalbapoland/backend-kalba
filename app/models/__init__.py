@@ -1,4 +1,9 @@
-from app.models.auth import AuthResponse, GoogleAuthRequest
+from app.models.auth import (
+    AuthResponse,
+    GoogleAuthRequest,
+    RefreshToken,
+    RefreshTokenRequest,
+)
 from app.models.user import TrainerProfile, User, UserRead, UserRole
 from app.models.video import (
     HostAction,
@@ -16,6 +21,8 @@ from app.models.workshop import Workshop, WorkshopCreate, WorkshopRead
 __all__ = [
     "AuthResponse",
     "GoogleAuthRequest",
+    "RefreshToken",
+    "RefreshTokenRequest",
     "HostAction",
     "HostActionResponse",
     "HostActionType",
