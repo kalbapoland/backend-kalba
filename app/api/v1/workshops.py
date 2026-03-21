@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,6 +16,23 @@ from app.services.daily import DailyService, get_daily_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/workshops", tags=["workshops"])
+MIN_WORKSHOP_YEAR = 2024
+MAX_WORKSHOP_YEAR = 2100
+
+
+def normalize_to_utc_naive(dt: datetime) -> datetime:
+    """Store workshop start_time as UTC-naive for DB consistency."""
+    if dt.tzinfo is None:
+        normalized = dt.replace(tzinfo=timezone.utc)
+    else:
+        normalized = dt.astimezone(timezone.utc)
+
+    if not MIN_WORKSHOP_YEAR <= normalized.year <= MAX_WORKSHOP_YEAR:
+        raise ValueError(
+            f"Workshop year must be between {MIN_WORKSHOP_YEAR} and {MAX_WORKSHOP_YEAR}"
+        )
+
+    return normalized.replace(tzinfo=None)
 
 
 @router.get("/", response_model=list[WorkshopRead])
@@ -62,11 +79,10 @@ async def create_workshop(
             detail="Only trainers can create workshops",
         )
 
-    start_time = body.start_time
-    if start_time.tzinfo is not None:
-        from datetime import timezone
-
-        start_time = start_time.astimezone(timezone.utc).replace(tzinfo=None)
+    try:
+        start_time = normalize_to_utc_naive(body.start_time)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     workshop = Workshop(
         trainer_id=user_id,
@@ -112,11 +128,11 @@ async def update_workshop(
     update_data = body.model_dump(exclude_unset=True)
 
     if "start_time" in update_data and update_data["start_time"] is not None:
-        from datetime import timezone
-
         st = update_data["start_time"]
-        if st.tzinfo is not None:
-            update_data["start_time"] = st.astimezone(timezone.utc).replace(tzinfo=None)
+        try:
+            update_data["start_time"] = normalize_to_utc_naive(st)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     for field, value in update_data.items():
         setattr(workshop, field, value)

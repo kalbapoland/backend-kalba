@@ -73,6 +73,19 @@ async def test_create_workshop_unauthenticated_is_forbidden(client, workshop_pay
     assert resp.status_code == 401
 
 
+async def test_create_workshop_with_invalid_year_is_rejected(
+    client, trainer_token, workshop_payload
+):
+    workshop_payload["start_time"] = "2277-09-01T09:27:00Z"
+    resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 422
+    assert "Workshop year must be between" in resp.json()["detail"]
+
+
 # --- Get ---
 
 
@@ -141,6 +154,25 @@ async def test_update_workshop_by_non_owner_is_forbidden(
         headers={"Authorization": f"Bearer {other_token}"},
     )
     assert resp.status_code == 403
+
+
+async def test_update_workshop_with_invalid_year_is_rejected(
+    client, trainer_token, workshop_payload
+):
+    create_resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    workshop_id = create_resp.json()["id"]
+
+    resp = await client.patch(
+        f"/api/v1/workshops/{workshop_id}",
+        json={"start_time": "2277-09-01T09:27:00Z"},
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 422
+    assert "Workshop year must be between" in resp.json()["detail"]
 
 
 # --- Delete ---
