@@ -22,7 +22,7 @@
 
 ## 🔵 Architektura
 
-- [ ] **TrainerProfile.specialties** — zamienić comma-separated string na JSON array lub osobną tabelę
+- [x] **TrainerProfile.specialties** — zamienić comma-separated string na JSON array lub osobną tabelę
 - [ ] **Soft delete** — usunięty warsztat traci historię uczestników; dodać `deleted_at` zamiast hard delete
 - [ ] **Refresh token** — JWT wygasa po 7 dniach, brak mechanizmu odświeżania; użytkownik musi logować się od nowa
 
