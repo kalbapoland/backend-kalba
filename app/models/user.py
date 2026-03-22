@@ -3,6 +3,7 @@ from typing import Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
+from sqlalchemy import Column, JSON, text
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -28,9 +29,7 @@ class TrainerProfile(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key="user.id", unique=True, index=True)
     bio: str = ""
-    specialties: str = (
-        ""  # comma-separated for simplicity; migrate to JSON/array later if needed
-    )
+    specialties: list[str] = Field(default=[], sa_column=Column(JSON, nullable=False, server_default=text("'[]'")))
 
     user: User | None = Relationship(back_populates="trainer_profile")
 
