@@ -87,7 +87,13 @@ async def create_workshop(
 
     await session.commit()
     await session.refresh(workshop)
-    logger.info("Workshop %s created by trainer %s", workshop.id, user_id)
+    logger.info(
+        "Workshop created: id=%s title=%r start_time=%s trainer=%s",
+        workshop.id,
+        workshop.title,
+        workshop.start_time.isoformat(),
+        user_id,
+    )
     return workshop
 
 
