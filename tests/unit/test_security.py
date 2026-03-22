@@ -6,7 +6,12 @@ import pytest
 from fastapi import HTTPException
 
 from app.core.config import Settings
-from app.core.security import create_access_token, decode_access_token
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_access_token,
+    decode_refresh_token,
+)
 
 
 def make_settings(**overrides) -> Settings:
@@ -71,4 +76,59 @@ def test_decode_token_wrong_secret_raises_401():
             token,
             make_settings(jwt_secret_key="secret-b-min-32-bytes-length-1234"),
         )
+    assert exc.value.status_code == 401
+
+
+def test_decode_access_token_with_refresh_token_raises_401():
+    """Using a refresh token where an access token is expected should fail."""
+    settings = make_settings()
+    token = create_refresh_token(uuid4(), settings)
+    with pytest.raises(HTTPException) as exc:
+        decode_access_token(token, settings)
+    assert exc.value.status_code == 401
+
+
+# --- Refresh token ---
+
+
+def test_create_refresh_token_returns_string():
+    token = create_refresh_token(uuid4(), make_settings())
+    assert isinstance(token, str) and len(token) > 0
+
+
+def test_decode_refresh_token_returns_correct_user_id():
+    settings = make_settings()
+    user_id = uuid4()
+    token = create_refresh_token(user_id, settings)
+    payload = decode_refresh_token(token, settings)
+    assert payload["sub"] == str(user_id)
+
+
+def test_decode_expired_refresh_token_raises_401():
+    settings = make_settings()
+    expired_payload = {
+        "sub": str(uuid4()),
+        "exp": datetime.now(UTC) - timedelta(minutes=1),
+        "type": "refresh",
+    }
+    token = jwt.encode(
+        expired_payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+    )
+    with pytest.raises(HTTPException) as exc:
+        decode_refresh_token(token, settings)
+    assert exc.value.status_code == 401
+
+
+def test_decode_invalid_refresh_token_raises_401():
+    with pytest.raises(HTTPException) as exc:
+        decode_refresh_token("not.a.valid.token", make_settings())
+    assert exc.value.status_code == 401
+
+
+def test_decode_refresh_token_with_access_token_raises_401():
+    """Using an access token where a refresh token is expected should fail."""
+    settings = make_settings()
+    token = create_access_token(uuid4(), settings)
+    with pytest.raises(HTTPException) as exc:
+        decode_refresh_token(token, settings)
     assert exc.value.status_code == 401
