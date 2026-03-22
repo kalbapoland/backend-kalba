@@ -28,7 +28,8 @@ class Settings(BaseSettings):
     # JWT
     jwt_secret_key: str = "change-me-in-production-min-32-bytes"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 60 * 24 * 7  # 1 week
+    jwt_expire_minutes: int = 15  # 15 minutes for access token
+    jwt_refresh_expire_days: int = 30  # 30 days for refresh token
 
     # Google OAuth
     google_client_id: str = ""

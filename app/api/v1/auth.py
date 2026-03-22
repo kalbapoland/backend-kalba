@@ -1,12 +1,12 @@
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.core.security import create_access_token, verify_google_id_token
+from app.core.security import create_access_token, create_refresh_token, decode_refresh_token, verify_google_id_token
 from app.db import get_db_session
-from app.models.auth import AuthResponse, GoogleAuthRequest
+from app.models.auth import AuthResponse, GoogleAuthRequest, RefreshRequest
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -54,4 +54,29 @@ async def google_auth(
         logger.info("Google auth succeeded for %s (existing user)", email)
 
     access_token = create_access_token(user.id)
-    return AuthResponse(access_token=access_token, user_id=user.id)
+    refresh_token = create_refresh_token(user.id)
+    return AuthResponse(access_token=access_token, refresh_token=refresh_token, user_id=user.id)
+
+
+@router.post("/refresh", response_model=AuthResponse)
+async def refresh_token(
+    body: RefreshRequest,
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    """Exchange a valid refresh token for a new access + refresh token pair."""
+    from uuid import UUID
+
+    payload = decode_refresh_token(body.refresh_token)
+    user_id = UUID(payload["sub"])
+
+    user = await db_session.get(User, user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    access_token = create_access_token(user_id)
+    new_refresh_token = create_refresh_token(user_id)
+    logger.info("Tokens refreshed for user %s", user_id)
+    return AuthResponse(access_token=access_token, refresh_token=new_refresh_token, user_id=user_id)
