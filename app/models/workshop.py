@@ -20,6 +20,7 @@ class Workshop(SQLModel, table=True):
     price: Decimal = Field(default=Decimal("0.00"), decimal_places=2, max_digits=10)
     max_participants: int = Field(ge=1)
     video_room_id: str | None = Field(default=None)
+    deleted_at: datetime | None = Field(default=None, index=True)
 
     trainer: User | None = Relationship()
     rules: Optional["WorkshopRules"] = Relationship(back_populates="workshop")
