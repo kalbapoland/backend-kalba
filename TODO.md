@@ -16,7 +16,7 @@
 
 - [ ] **Paginacja** — dodać parametry `skip`/`limit` na `GET /workshops/`
 - [ ] **Transakcje DB** — join warsztatu wykonuje wiele operacji bez `async with session.begin()` (`app/api/v1/video.py`)
-- [ ] **Walidacja dat** — `WorkshopCreate.start_time` powinno odrzucać daty z przeszłości
+- [x] **Walidacja dat** — `WorkshopCreate.start_time` powinno odrzucać daty z przeszłości
 
 ---
 

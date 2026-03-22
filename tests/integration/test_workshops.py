@@ -162,3 +162,41 @@ async def test_delete_workshop(client, trainer_token, workshop_payload):
 
     get_resp = await client.get(f"/api/v1/workshops/{workshop_id}")
     assert get_resp.status_code == 404
+
+
+# --- Date validation ---
+
+
+async def test_create_workshop_with_past_start_time_is_rejected(
+    client, trainer_token
+):
+    past_payload = {
+        "title": "Past Workshop",
+        "description": "",
+        "start_time": (datetime.now(UTC) - timedelta(hours=1)).isoformat(),
+        "duration_minutes": 60,
+        "price": "0.00",
+        "max_participants": 5,
+    }
+    resp = await client.post(
+        "/api/v1/workshops/",
+        json=past_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 422
+    body = resp.json()
+    assert any(
+        "future" in str(e.get("msg", "")).lower()
+        for e in body.get("detail", [])
+    )
+
+
+async def test_create_workshop_with_future_start_time_succeeds(
+    client, trainer_token, workshop_payload
+):
+    resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 201
