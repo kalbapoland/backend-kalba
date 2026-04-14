@@ -17,6 +17,7 @@ class Workshop(SQLModel, table=True):
     description: str = ""
     start_time: datetime
     duration_minutes: int = Field(ge=1)
+    timezone: str = Field(default="UTC")  # IANA timezone, e.g. "America/Los_Angeles"
     price: Decimal = Field(default=Decimal("0.00"), decimal_places=2, max_digits=10)
     max_participants: int = Field(ge=1)
     video_room_id: str | None = Field(default=None)
@@ -32,6 +33,7 @@ class WorkshopCreate(BaseModel):
     description: str = ""
     start_time: datetime
     duration_minutes: int
+    timezone: str = "UTC"  # IANA timezone where the event was created
     price: Decimal = Decimal("0.00")
     max_participants: int
 
@@ -52,6 +54,7 @@ class WorkshopUpdate(BaseModel):
     description: str | None = None
     start_time: datetime | None = None
     duration_minutes: int | None = None
+    timezone: str | None = None
     price: Decimal | None = None
     max_participants: int | None = None
 
@@ -63,6 +66,7 @@ class WorkshopRead(BaseModel):
     description: str
     start_time: datetime
     duration_minutes: int
+    timezone: str
     price: Decimal
     max_participants: int
 
