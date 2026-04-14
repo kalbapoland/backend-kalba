@@ -200,3 +200,61 @@ async def test_create_workshop_with_future_start_time_succeeds(
         headers={"Authorization": f"Bearer {trainer_token}"},
     )
     assert resp.status_code == 201
+
+
+async def test_create_workshop_stores_timezone(client, trainer_token):
+    payload = {
+        "title": "LA Evening Session",
+        "description": "",
+        "start_time": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
+        "duration_minutes": 60,
+        "timezone": "America/Los_Angeles",
+        "price": "0.00",
+        "max_participants": 5,
+    }
+    resp = await client.post(
+        "/api/v1/workshops/",
+        json=payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["timezone"] == "America/Los_Angeles"
+
+
+async def test_create_workshop_defaults_timezone_to_utc(client, trainer_token, workshop_payload):
+    resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["timezone"] == "UTC"
+
+
+async def test_ongoing_workshop_appears_in_list(client, trainer_token):
+    """A workshop that has started but not ended should appear in the list."""
+    payload = {
+        "title": "Ongoing Session",
+        "description": "",
+        "start_time": (datetime.now(UTC) + timedelta(seconds=1)).isoformat(),
+        "duration_minutes": 500,
+        "price": "0.00",
+        "max_participants": 5,
+    }
+    create_resp = await client.post(
+        "/api/v1/workshops/",
+        json=payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert create_resp.status_code == 201
+
+    # Patch start_time directly to simulate it being in the past but not ended
+    import asyncio
+    await asyncio.sleep(0.01)  # ensure start_time has passed
+
+    resp = await client.get("/api/v1/workshops/")
+    assert resp.status_code == 200
+    titles = [w["title"] for w in resp.json()]
+    assert "Ongoing Session" in titles
+
