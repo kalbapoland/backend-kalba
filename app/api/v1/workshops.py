@@ -78,6 +78,7 @@ async def create_workshop(
         duration_minutes=body.duration_minutes,
         price=body.price,
         max_participants=body.max_participants,
+        timezone=body.timezone,
         video_room_id=None,
     )
     session.add(workshop)
