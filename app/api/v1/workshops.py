@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import text
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -21,14 +22,15 @@ router = APIRouter(prefix="/workshops", tags=["workshops"])
 async def list_workshops(
     session: AsyncSession = Depends(get_db_session),
 ):
-    """List all upcoming workshops."""
+    """List upcoming and ongoing workshops."""
+    now = datetime.now(UTC).replace(tzinfo=None)
     statement = select(Workshop).where(
-        Workshop.start_time >= datetime.now(UTC).replace(tzinfo=None),
+        text("start_time + (duration_minutes * INTERVAL '1 minute') > :now").bindparams(now=now),
         Workshop.deleted_at.is_(None),
     )
     result = await session.exec(statement)
     rows = result.all()
-    logger.info("Returning %d upcoming workshops", len(rows))
+    logger.info("Returning %d upcoming/ongoing workshops", len(rows))
     return rows
 
 
