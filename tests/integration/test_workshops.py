@@ -4,6 +4,7 @@ import pytest
 
 from app.core.security import create_access_token
 from app.models.user import User, UserRole
+from app.models.workshop import Workshop
 
 
 @pytest.fixture
@@ -71,6 +72,36 @@ async def test_create_workshop_as_regular_user_is_forbidden(
 async def test_create_workshop_unauthenticated_is_forbidden(client, workshop_payload):
     resp = await client.post("/api/v1/workshops/", json=workshop_payload)
     assert resp.status_code == 401
+
+
+async def test_create_workshop_with_invalid_year_is_rejected(
+    client, trainer_token, workshop_payload
+):
+    workshop_payload["start_time"] = "2277-09-01T09:27:00Z"
+    resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 422
+    assert "Workshop year must be between" in resp.json()["detail"]
+
+
+async def test_create_workshop_with_past_date_is_rejected(
+    client, trainer_token, workshop_payload
+):
+    workshop_payload["start_time"] = (
+        datetime.now(UTC) - timedelta(hours=2)
+    ).isoformat()
+    resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 422
+    assert any(
+        "future" in str(e.get("msg", "")).lower() for e in resp.json().get("detail", [])
+    )
 
 
 # --- Get ---
@@ -143,6 +174,99 @@ async def test_update_workshop_by_non_owner_is_forbidden(
     assert resp.status_code == 403
 
 
+async def test_update_workshop_with_invalid_year_is_rejected(
+    client, trainer_token, workshop_payload
+):
+    create_resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    workshop_id = create_resp.json()["id"]
+
+    resp = await client.patch(
+        f"/api/v1/workshops/{workshop_id}",
+        json={"start_time": "2277-09-01T09:27:00Z"},
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 422
+    assert "Workshop year must be between" in resp.json()["detail"]
+
+
+async def test_update_workshop_with_past_date_is_rejected(
+    client, trainer_token, workshop_payload
+):
+    create_resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    workshop_id = create_resp.json()["id"]
+
+    resp = await client.patch(
+        f"/api/v1/workshops/{workshop_id}",
+        json={"start_time": (datetime.now(UTC) - timedelta(hours=1)).isoformat()},
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 422
+    assert any(
+        "future" in str(e.get("msg", "")).lower() for e in resp.json().get("detail", [])
+    )
+
+
+async def test_list_workshops_supports_skip_and_limit(
+    client, trainer_token, workshop_payload
+):
+    payload_1 = {**workshop_payload, "title": "Workshop 1"}
+    payload_2 = {
+        **workshop_payload,
+        "title": "Workshop 2",
+        "start_time": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
+    }
+    payload_3 = {
+        **workshop_payload,
+        "title": "Workshop 3",
+        "start_time": (datetime.now(UTC) + timedelta(days=3)).isoformat(),
+    }
+
+    for payload in (payload_1, payload_2, payload_3):
+        resp = await client.post(
+            "/api/v1/workshops/",
+            json=payload,
+            headers={"Authorization": f"Bearer {trainer_token}"},
+        )
+        assert resp.status_code == 201
+
+    first_page = await client.get("/api/v1/workshops/?skip=0&limit=2")
+    second_page = await client.get("/api/v1/workshops/?skip=2&limit=2")
+
+    assert first_page.status_code == 200
+    assert second_page.status_code == 200
+    assert len(first_page.json()) == 2
+    assert len(second_page.json()) == 1
+
+
+async def test_soft_deleted_workshop_is_not_listed(
+    client, trainer_token, workshop_payload
+):
+    create_resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    workshop_id = create_resp.json()["id"]
+
+    delete_resp = await client.delete(
+        f"/api/v1/workshops/{workshop_id}",
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert delete_resp.status_code == 204
+
+    list_resp = await client.get("/api/v1/workshops/")
+    assert list_resp.status_code == 200
+    assert all(row["id"] != workshop_id for row in list_resp.json())
+
+
 # --- Delete ---
 
 
@@ -167,9 +291,7 @@ async def test_delete_workshop(client, trainer_token, workshop_payload):
 # --- Date validation ---
 
 
-async def test_create_workshop_with_past_start_time_is_rejected(
-    client, trainer_token
-):
+async def test_create_workshop_with_past_start_time_is_rejected(client, trainer_token):
     past_payload = {
         "title": "Past Workshop",
         "description": "",
@@ -186,8 +308,7 @@ async def test_create_workshop_with_past_start_time_is_rejected(
     assert resp.status_code == 422
     body = resp.json()
     assert any(
-        "future" in str(e.get("msg", "")).lower()
-        for e in body.get("detail", [])
+        "future" in str(e.get("msg", "")).lower() for e in body.get("detail", [])
     )
 
 
@@ -222,7 +343,9 @@ async def test_create_workshop_stores_timezone(client, trainer_token):
     assert data["timezone"] == "America/Los_Angeles"
 
 
-async def test_create_workshop_defaults_timezone_to_utc(client, trainer_token, workshop_payload):
+async def test_create_workshop_defaults_timezone_to_utc(
+    client, trainer_token, workshop_payload
+):
     resp = await client.post(
         "/api/v1/workshops/",
         json=workshop_payload,
@@ -232,12 +355,12 @@ async def test_create_workshop_defaults_timezone_to_utc(client, trainer_token, w
     assert resp.json()["timezone"] == "UTC"
 
 
-async def test_ongoing_workshop_appears_in_list(client, trainer_token):
+async def test_ongoing_workshop_appears_in_list(client, trainer_token, db_session):
     """A workshop that has started but not ended should appear in the list."""
     payload = {
         "title": "Ongoing Session",
         "description": "",
-        "start_time": (datetime.now(UTC) + timedelta(seconds=1)).isoformat(),
+        "start_time": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
         "duration_minutes": 500,
         "price": "0.00",
         "max_participants": 5,
@@ -249,12 +372,15 @@ async def test_ongoing_workshop_appears_in_list(client, trainer_token):
     )
     assert create_resp.status_code == 201
 
-    # Patch start_time directly to simulate it being in the past but not ended
-    import asyncio
-    await asyncio.sleep(0.01)  # ensure start_time has passed
+    workshop = await db_session.get(Workshop, create_resp.json()["id"])
+    assert workshop is not None
+    workshop.start_time = (datetime.now(UTC) - timedelta(minutes=1)).replace(
+        tzinfo=None
+    )
+    db_session.add(workshop)
+    await db_session.commit()
 
     resp = await client.get("/api/v1/workshops/")
     assert resp.status_code == 200
     titles = [w["title"] for w in resp.json()]
     assert "Ongoing Session" in titles
-

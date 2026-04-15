@@ -28,6 +28,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/video", tags=["video"])
 
 
+async def _get_active_workshop_or_404(
+    session: AsyncSession,
+    workshop_id: UUID,
+) -> Workshop:
+    workshop = await session.get(Workshop, workshop_id)
+    if workshop is None or workshop.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Workshop not found")
+    return workshop
+
+
 @router.post("/workshops/{workshop_id}/join", response_model=JoinResponse)
 async def join_workshop(
     workshop_id: UUID,
@@ -42,9 +52,7 @@ async def join_workshop(
     )
 
     # 1. Load workshop
-    workshop = await session.get(Workshop, workshop_id)
-    if workshop is None:
-        raise HTTPException(status_code=404, detail="Workshop not found")
+    workshop = await _get_active_workshop_or_404(session, workshop_id)
 
     # 2. Determine role (needed before time check so host can join early)
     is_host = user_id == workshop.trainer_id
@@ -62,38 +70,37 @@ async def join_workshop(
         if now > latest_join:
             raise HTTPException(status_code=403, detail="Workshop has ended")
 
-    # 4. Capacity check (skip for host)
-    if not is_host:
-        count_stmt = (
-            select(func.count())
-            .select_from(WorkshopParticipant)
-            .where(
-                WorkshopParticipant.workshop_id == workshop_id,
-                WorkshopParticipant.role == ParticipantRole.PARTICIPANT,
+    # 4/5. Capacity check + participant upsert in one transaction.
+    async with session.begin():
+        if not is_host:
+            count_stmt = (
+                select(func.count())
+                .select_from(WorkshopParticipant)
+                .where(
+                    WorkshopParticipant.workshop_id == workshop_id,
+                    WorkshopParticipant.role == ParticipantRole.PARTICIPANT,
+                )
             )
-        )
-        count = (await session.exec(count_stmt)).one()
-        if count >= workshop.max_participants:
-            raise HTTPException(status_code=403, detail="Workshop is full")
+            count = (await session.exec(count_stmt)).one()
+            if count >= workshop.max_participants:
+                raise HTTPException(status_code=403, detail="Workshop is full")
 
-    # 5. Upsert participant record
-    existing_stmt = select(WorkshopParticipant).where(
-        WorkshopParticipant.user_id == user_id,
-        WorkshopParticipant.workshop_id == workshop_id,
-    )
-    existing = (await session.exec(existing_stmt)).first()
-    if existing is None:
-        participant = WorkshopParticipant(
-            user_id=user_id,
-            workshop_id=workshop_id,
-            role=role,
-            joined_at=now,
+        existing_stmt = select(WorkshopParticipant).where(
+            WorkshopParticipant.user_id == user_id,
+            WorkshopParticipant.workshop_id == workshop_id,
         )
-        session.add(participant)
-    else:
-        existing.joined_at = now
-        session.add(existing)
-    await session.commit()
+        existing = (await session.exec(existing_stmt)).first()
+        if existing is None:
+            participant = WorkshopParticipant(
+                user_id=user_id,
+                workshop_id=workshop_id,
+                role=role,
+                joined_at=now,
+            )
+            session.add(participant)
+        else:
+            existing.joined_at = now
+            session.add(existing)
 
     # 6. Ensure Daily room exists (create only on first join)
     if not workshop.video_room_id:
@@ -225,7 +232,7 @@ async def get_workshop_rules(
         user_id,
     )
     workshop = await session.get(Workshop, workshop_id)
-    if workshop is None:
+    if workshop is None or workshop.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Workshop not found")
 
     rules_stmt = select(WorkshopRules).where(WorkshopRules.workshop_id == workshop_id)
@@ -263,9 +270,7 @@ async def host_action(
         user_id,
         body.action.value,
     )
-    workshop = await session.get(Workshop, workshop_id)
-    if workshop is None:
-        raise HTTPException(status_code=404, detail="Workshop not found")
+    workshop = await _get_active_workshop_or_404(session, workshop_id)
     if user_id != workshop.trainer_id:
         raise HTTPException(
             status_code=403, detail="Only the host can perform this action"

@@ -197,6 +197,7 @@ cython_debug/
 
 # Claude Code
 .claude/
+.github/agents/
 
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
@@ -209,3 +210,4 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+.github/agents

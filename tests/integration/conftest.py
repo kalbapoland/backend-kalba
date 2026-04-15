@@ -2,6 +2,7 @@ import os
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -20,9 +21,13 @@ _RAW_DB_URL = os.environ.get(
 async def engine():
     url, connect_args = _prepare_async_url(_RAW_DB_URL)
     e = create_async_engine(url, connect_args=connect_args)
-    async with e.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.drop_all)
-        await conn.run_sync(SQLModel.metadata.create_all)
+    try:
+        async with e.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.drop_all)
+            await conn.run_sync(SQLModel.metadata.create_all)
+    except (OSError, SQLAlchemyError) as exc:
+        await e.dispose()
+        pytest.skip(f"PostgreSQL test database unavailable: {exc}")
     yield e
     await e.dispose()
 

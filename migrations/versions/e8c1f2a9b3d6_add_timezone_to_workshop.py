@@ -20,16 +20,22 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "workshop",
-        sa.Column(
-            "timezone",
-            sa.String(),
-            nullable=False,
-            server_default="UTC",
-        ),
-    )
+    inspector = sa.inspect(op.get_bind())
+    workshop_columns = {column["name"] for column in inspector.get_columns("workshop")}
+    if "timezone" not in workshop_columns:
+        op.add_column(
+            "workshop",
+            sa.Column(
+                "timezone",
+                sa.String(),
+                nullable=False,
+                server_default="UTC",
+            ),
+        )
 
 
 def downgrade() -> None:
-    op.drop_column("workshop", "timezone")
+    inspector = sa.inspect(op.get_bind())
+    workshop_columns = {column["name"] for column in inspector.get_columns("workshop")}
+    if "timezone" in workshop_columns:
+        op.drop_column("workshop", "timezone")

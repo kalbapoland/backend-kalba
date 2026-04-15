@@ -6,16 +6,16 @@
 
 ## 🔴 Security
 
-- [ ] **CORS** — zmienić `["*"]` na whitelist z domeną frontendu (`app/core/config.py`)
-- [ ] **Rate limiting** — dodać na `POST /api/v1/auth/google` (np. `slowapi`)
-- [ ] **Daily.co webhook** — `verify_webhook_signature()` istnieje w `app/services/daily.py` ale nie jest wywoływana w handlerze (`app/api/v1/video.py`)
+- [x] **CORS** — zmienić `["*"]` na whitelist z domeną frontendu (`app/core/config.py`)
+- [x] **Rate limiting** — dodać na `POST /api/v1/auth/google` (np. `slowapi`)
+- [x] **Daily.co webhook** — `verify_webhook_signature()` istnieje w `app/services/daily.py` ale nie jest wywoływana w handlerze (`app/api/v1/video.py`)
 
 ---
 
 ## 🟡 Jakość kodu
 
-- [ ] **Paginacja** — dodać parametry `skip`/`limit` na `GET /workshops/`
-- [ ] **Transakcje DB** — join warsztatu wykonuje wiele operacji bez `async with session.begin()` (`app/api/v1/video.py`)
+- [x] **Paginacja** — dodać parametry `skip`/`limit` na `GET /workshops/`
+- [x] **Transakcje DB** — join warsztatu wykonuje wiele operacji bez `async with session.begin()` (`app/api/v1/video.py`)
 - [x] **Walidacja dat** — `WorkshopCreate.start_time` powinno odrzucać daty z przeszłości
 
 ---
@@ -29,6 +29,9 @@
 ---
 
 ## ✅ Zrobione
+
+- **2026-03-21** — wszystkie otwarte punkty powyżej zostały zaimplementowane w kodzie i migracjach.
+- **Weryfikacja** — pełen backend test suite przeszedł lokalnie na Docker/PostgreSQL: `32 passed`.
 
 - ~~**Google Client IDs**~~ — przeniesione do zmiennych środowiskowych (`app/core/config.py`)
 - ~~**Testy**~~ — dodano pytest (unit + integracyjne) w `tests/`

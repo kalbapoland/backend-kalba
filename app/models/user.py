@@ -3,7 +3,8 @@ from typing import Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
-from sqlalchemy import Column, JSON, text
+from sqlalchemy import Column
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -29,7 +30,10 @@ class TrainerProfile(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key="user.id", unique=True, index=True)
     bio: str = ""
-    specialties: list[str] = Field(default=[], sa_column=Column(JSON, nullable=False, server_default=text("'[]'")))
+    specialties: list[str] = Field(
+        default_factory=list,
+        sa_column=Column(JSONB, nullable=False),
+    )
 
     user: User | None = Relationship(back_populates="trainer_profile")
 

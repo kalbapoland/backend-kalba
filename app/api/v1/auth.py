@@ -1,12 +1,27 @@
 import logging
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.core.security import create_access_token, create_refresh_token, decode_refresh_token, verify_google_id_token
+from app.core.config import Settings, get_settings
+from app.core.rate_limit import enforce_google_auth_rate_limit
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
+    hash_token,
+    verify_google_id_token,
+)
 from app.db import get_db_session
-from app.models.auth import AuthResponse, GoogleAuthRequest, RefreshRequest
+from app.models.auth import (
+    AuthResponse,
+    GoogleAuthRequest,
+    RefreshToken,
+    RefreshTokenRequest,
+)
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -18,6 +33,8 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 async def google_auth(
     body: GoogleAuthRequest,
     db_session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+    _: None = Depends(enforce_google_auth_rate_limit),
 ):
     """Authenticate with a Google ID token.
 
@@ -53,30 +70,91 @@ async def google_auth(
     else:
         logger.info("Google auth succeeded for %s (existing user)", email)
 
-    access_token = create_access_token(user.id)
-    refresh_token = create_refresh_token(user.id)
-    return AuthResponse(access_token=access_token, refresh_token=refresh_token, user_id=user.id)
+    access_token = create_access_token(user.id, settings)
+    refresh_token_id = uuid4()
+    refresh_token = create_refresh_token(
+        user.id,
+        token_id=refresh_token_id,
+        settings=settings,
+    )
+
+    db_session.add(
+        RefreshToken(
+            id=refresh_token_id,
+            user_id=user.id,
+            token_hash=hash_token(refresh_token),
+            issued_at=datetime.now(UTC).replace(tzinfo=None),
+            expires_at=(
+                datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
+            ).replace(tzinfo=None),
+        )
+    )
+    await db_session.commit()
+
+    return AuthResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user_id=user.id,
+    )
 
 
 @router.post("/refresh", response_model=AuthResponse)
-async def refresh_token(
-    body: RefreshRequest,
+async def refresh_auth_token(
+    body: RefreshTokenRequest,
     db_session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ):
-    """Exchange a valid refresh token for a new access + refresh token pair."""
-    from uuid import UUID
-
-    payload = decode_refresh_token(body.refresh_token)
+    payload = decode_refresh_token(body.refresh_token, settings)
     user_id = UUID(payload["sub"])
 
-    user = await db_session.get(User, user_id)
-    if user is None or not user.is_active:
+    token_hash = hash_token(body.refresh_token)
+    stmt = select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+    token_row = (await db_session.exec(stmt)).first()
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    if (
+        token_row is None
+        or token_row.revoked_at is not None
+        or token_row.expires_at < now
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
+            detail="Invalid refresh token",
         )
 
-    access_token = create_access_token(user_id)
-    new_refresh_token = create_refresh_token(user_id)
-    logger.info("Tokens refreshed for user %s", user_id)
-    return AuthResponse(access_token=access_token, refresh_token=new_refresh_token, user_id=user_id)
+    user = await db_session.get(User, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+
+    token_row.revoked_at = now
+    db_session.add(token_row)
+
+    new_refresh_id = uuid4()
+    new_refresh_token = create_refresh_token(
+        user_id,
+        token_id=new_refresh_id,
+        settings=settings,
+    )
+
+    db_session.add(
+        RefreshToken(
+            id=new_refresh_id,
+            user_id=user_id,
+            token_hash=hash_token(new_refresh_token),
+            issued_at=now,
+            expires_at=(
+                datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
+            ).replace(tzinfo=None),
+        )
+    )
+
+    await db_session.commit()
+
+    return AuthResponse(
+        access_token=create_access_token(user_id, settings),
+        refresh_token=new_refresh_token,
+        user_id=user_id,
+    )

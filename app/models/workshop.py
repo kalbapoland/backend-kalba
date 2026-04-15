@@ -39,13 +39,11 @@ class WorkshopCreate(BaseModel):
 
     @field_validator("start_time")
     @classmethod
-    def start_time_must_be_future(cls, v: datetime) -> datetime:
-        """Reject workshops scheduled in the past."""
-        now = datetime.now(timezone.utc)
-        # Normalise naive datetimes (stored as UTC) for comparison.
-        v_aware = v if v.tzinfo is not None else v.replace(tzinfo=timezone.utc)
-        if v_aware <= now:
-            raise ValueError("start_time must be in the future")
+    def validate_start_time_not_in_past(cls, v: datetime) -> datetime:
+        now_utc = datetime.now(timezone.utc)
+        candidate = v if v.tzinfo is not None else v.replace(tzinfo=timezone.utc)
+        if candidate <= now_utc:
+            raise ValueError("Workshop start_time must be in the future")
         return v
 
 
@@ -57,6 +55,17 @@ class WorkshopUpdate(BaseModel):
     timezone: str | None = None
     price: Decimal | None = None
     max_participants: int | None = None
+
+    @field_validator("start_time")
+    @classmethod
+    def validate_start_time_not_in_past(cls, v: datetime | None) -> datetime | None:
+        if v is None:
+            return v
+        now_utc = datetime.now(timezone.utc)
+        candidate = v if v.tzinfo is not None else v.replace(tzinfo=timezone.utc)
+        if candidate <= now_utc:
+            raise ValueError("Workshop start_time must be in the future")
+        return v
 
 
 class WorkshopRead(BaseModel):

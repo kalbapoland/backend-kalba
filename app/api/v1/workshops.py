@@ -1,10 +1,9 @@
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import text
-from sqlmodel import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.security import get_current_user_id
@@ -12,21 +11,49 @@ from app.db import get_db_session
 from app.models.user import User, UserRole
 from app.models.video import WorkshopRules
 from app.models.workshop import Workshop, WorkshopCreate, WorkshopRead, WorkshopUpdate
+from app.services.daily import DailyService, DailyServiceError, get_daily_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/workshops", tags=["workshops"])
+MIN_WORKSHOP_YEAR = 2024
+MAX_WORKSHOP_YEAR = 2100
+
+
+def normalize_to_utc_naive(dt: datetime) -> datetime:
+    """Store workshop start_time as UTC-naive for DB consistency."""
+    if dt.tzinfo is None:
+        normalized = dt.replace(tzinfo=timezone.utc)
+    else:
+        normalized = dt.astimezone(timezone.utc)
+
+    if not MIN_WORKSHOP_YEAR <= normalized.year <= MAX_WORKSHOP_YEAR:
+        raise ValueError(
+            f"Workshop year must be between {MIN_WORKSHOP_YEAR} and {MAX_WORKSHOP_YEAR}"
+        )
+
+    return normalized.replace(tzinfo=None)
 
 
 @router.get("/", response_model=list[WorkshopRead])
 async def list_workshops(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """List upcoming and ongoing workshops."""
+    """List all upcoming workshops."""
     now = datetime.now(UTC).replace(tzinfo=None)
-    statement = select(Workshop).where(
-        text("start_time + (duration_minutes * INTERVAL '1 minute') > :now").bindparams(now=now),
-        Workshop.deleted_at.is_(None),
+    statement = (
+        select(Workshop)
+        .where(
+            Workshop.deleted_at.is_(None),
+            Workshop.start_time
+            + func.make_interval(0, 0, 0, 0, 0, Workshop.duration_minutes)
+            >= now,
+        )
+        .order_by(Workshop.start_time)
+        .offset(skip)
+        .limit(limit)
     )
     result = await session.exec(statement)
     rows = result.all()
@@ -64,11 +91,10 @@ async def create_workshop(
             detail="Only trainers can create workshops",
         )
 
-    start_time = body.start_time
-    if start_time.tzinfo is not None:
-        from datetime import timezone
-
-        start_time = start_time.astimezone(timezone.utc).replace(tzinfo=None)
+    try:
+        start_time = normalize_to_utc_naive(body.start_time)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     workshop = Workshop(
         trainer_id=user_id,
@@ -109,7 +135,7 @@ async def update_workshop(
 ):
     """Update a workshop. Only the trainer who created it may edit it."""
     workshop = await session.get(Workshop, workshop_id)
-    if workshop is None:
+    if workshop is None or workshop.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Workshop not found")
 
     if workshop.trainer_id != user_id:
@@ -121,11 +147,11 @@ async def update_workshop(
     update_data = body.model_dump(exclude_unset=True)
 
     if "start_time" in update_data and update_data["start_time"] is not None:
-        from datetime import timezone
-
         st = update_data["start_time"]
-        if st.tzinfo is not None:
-            update_data["start_time"] = st.astimezone(timezone.utc).replace(tzinfo=None)
+        try:
+            update_data["start_time"] = normalize_to_utc_naive(st)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     for field, value in update_data.items():
         setattr(workshop, field, value)
@@ -146,10 +172,11 @@ async def delete_workshop(
     workshop_id: UUID,
     user_id: UUID = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db_session),
+    daily: DailyService = Depends(get_daily_service),
 ):
     """Delete a workshop. Only the trainer who created it may delete it."""
     workshop = await session.get(Workshop, workshop_id)
-    if workshop is None:
+    if workshop is None or workshop.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Workshop not found")
 
     if workshop.trainer_id != user_id:
@@ -159,6 +186,21 @@ async def delete_workshop(
         )
 
     logger.info("Soft-deleting workshop %s (requested by %s)", workshop_id, user_id)
+
+    # Clean up Daily.co room if one was created
+    if workshop.video_room_id:
+        try:
+            await daily.delete_room(workshop.video_room_id)
+        except DailyServiceError as exc:
+            logger.error(
+                "Failed to delete Daily room for workshop %s: %s",
+                workshop_id,
+                exc.detail,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Video service unavailable",
+            ) from exc
 
     workshop.deleted_at = datetime.now(UTC).replace(tzinfo=None)
     session.add(workshop)

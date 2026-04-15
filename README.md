@@ -162,6 +162,14 @@ The API is available at `http://localhost:8000`. Open `http://localhost:8000/doc
 | GET    | `/api/v1/workshops/`    | No       | List upcoming workshops        |
 | POST   | `/api/v1/workshops/`    | Bearer (trainer only) | Create a workshop |
 
+### Workshop Time Policy (UTC Canonical)
+
+- Workshop `start_time` is canonicalized to UTC in backend logic.
+- DB stores `start_time` as UTC-naive datetime for consistency.
+- API responses expose `start_time` as ISO datetime with `Z` suffix (UTC).
+- Frontend create/edit forms should submit UTC values and UI should render UTC,
+  so all users see exactly the same workshop schedule regardless of device timezone.
+
 ## Deployment (Fly.io)
 
 The app is containerized with Docker and configured for [Fly.io](https://fly.io) deployment.
@@ -246,6 +254,100 @@ fly ssh console         # SSH into the running machine
 fly secrets list        # List set secrets (values hidden)
 fly postgres connect kalba-db  # Connect to the database via psql
 ```
+
+## Connect Fly Postgres In VS Code (Reproducible)
+
+This project uses a standalone Fly app for Postgres (`kalba-db`) with a
+Flycast hostname (`postgresql://kalba-db.flycast`). Flycast is private to Fly
+networking, so VS Code on your Mac must connect through a local Fly tunnel.
+
+### 1. Install prerequisites
+
+- Install Fly CLI and log in: `fly auth login`
+- Install the VS Code extension: **PostgreSQL**
+
+### 2. Ensure the database machine is running
+
+```bash
+fly machine list --app kalba-db
+fly machine restart <MACHINE_ID> --app kalba-db
+```
+
+Use the machine ID returned by `fly machine list`.
+
+### 3. Start a local tunnel (keep this terminal open)
+
+```bash
+fly proxy 15432:5432 --app kalba-db
+```
+
+Your local connection endpoint is now:
+
+- Host: `127.0.0.1`
+- Port: `15432`
+
+### 4. Get or create DB credentials (run on your Mac, not inside Fly SSH)
+
+If you already know your Postgres username/password/database, use them.
+That is enough for VS Code; no password rotation is required.
+
+If not, open a Postgres session from your Mac with Fly CLI:
+
+```bash
+fly postgres connect --app kalba-db
+```
+
+Then run in `psql`:
+
+```sql
+CREATE ROLE kalba_vscode WITH LOGIN PASSWORD 'change-me-strong-password';
+GRANT CONNECT ON DATABASE postgres TO kalba_vscode;
+\c postgres
+GRANT USAGE ON SCHEMA public TO kalba_vscode;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO kalba_vscode;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO kalba_vscode;
+```
+
+Set a password for that role (required by VS Code extension over local proxy):
+
+```sql
+ALTER ROLE kalba_vscode WITH PASSWORD 'change-me-strong-password';
+```
+
+This role/password creation is a one-time setup only.
+
+Important:
+
+- Do not run these commands inside `fly ssh console`.
+- `fly ssh console` opens a remote shell where your local `.venv` path and Fly CLI are unavailable.
+
+### 5. Add connection in VS Code PostgreSQL extension
+
+Create a new connection with:
+
+- Host: `127.0.0.1`
+- Port: `15432`
+- Database: `postgres` (or your app DB name)
+- Username: `kalba_vscode` (or your existing DB user)
+- Password: your existing DB password (or value from step 4 if you created `kalba_vscode`)
+- SSL mode: `disable` (the Fly tunnel is local)
+
+After connecting, you should be able to browse schemas and run queries in VS Code.
+
+### 6. One-liner verification
+
+```bash
+PGPASSWORD='change-me-strong-password' psql -h 127.0.0.1 -p 15432 -U kalba_vscode -d postgres -c 'select now();'
+```
+
+## Notes About Scale / Restart For `kalba-db`
+
+- Restarting a machine is safe for troubleshooting:
+  `fly machine restart <MACHINE_ID> --app kalba-db`
+- Cloning a machine does **not** automatically configure Postgres replication.
+- For production high availability, use Fly Managed Postgres or configure
+  primary/replica replication explicitly before running multiple DB machines.
 
 ### How Fly.io knows where to deploy
 
