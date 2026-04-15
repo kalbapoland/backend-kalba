@@ -42,8 +42,8 @@ class WorkshopCreate(BaseModel):
     def validate_start_time_not_in_past(cls, v: datetime) -> datetime:
         now_utc = datetime.now(timezone.utc)
         candidate = v if v.tzinfo is not None else v.replace(tzinfo=timezone.utc)
-        if candidate < now_utc:
-            raise ValueError("Workshop start_time cannot be in the past")
+        if candidate <= now_utc:
+            raise ValueError("Workshop start_time must be in the future")
         return v
 
 
@@ -63,8 +63,8 @@ class WorkshopUpdate(BaseModel):
             return v
         now_utc = datetime.now(timezone.utc)
         candidate = v if v.tzinfo is not None else v.replace(tzinfo=timezone.utc)
-        if candidate < now_utc:
-            raise ValueError("Workshop start_time cannot be in the past")
+        if candidate <= now_utc:
+            raise ValueError("Workshop start_time must be in the future")
         return v
 
 

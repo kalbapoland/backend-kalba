@@ -56,7 +56,9 @@ async def test_refresh_token_rotates_and_returns_new_tokens(client, db_session):
     assert data["user_id"] == str(user.id)
 
     old_token = (
-        await db_session.exec(select(RefreshToken).where(RefreshToken.id == original_id))
+        await db_session.exec(
+            select(RefreshToken).where(RefreshToken.id == original_id)
+        )
     ).first()
     assert old_token is not None
     assert old_token.revoked_at is not None
@@ -80,7 +82,9 @@ async def test_google_auth_is_rate_limited(client, monkeypatch):
             "name": "Rate Limit User",
         }
 
-    monkeypatch.setattr(auth_api, "verify_google_id_token", _fake_verify_google_id_token)
+    monkeypatch.setattr(
+        auth_api, "verify_google_id_token", _fake_verify_google_id_token
+    )
 
     statuses = []
     for _ in range(6):

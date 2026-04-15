@@ -27,33 +27,21 @@ def create_access_token(user_id: UUID, settings: Settings | None = None) -> str:
     )
 
 
-def create_refresh_token(user_id: UUID, settings: Settings | None = None) -> str:
-    settings = settings or get_settings()
-    expire = datetime.now(UTC) + timedelta(days=settings.jwt_refresh_expire_days)
-    payload = {
-        "sub": str(user_id),
-        "exp": expire,
-        "type": "refresh",
-    }
-    return jwt.encode(
-        payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
-    )
-
-
 def create_refresh_token(
     user_id: UUID,
-    *,
-    token_id: UUID,
     settings: Settings | None = None,
+    *,
+    token_id: UUID | None = None,
 ) -> str:
     settings = settings or get_settings()
     expire = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
     payload = {
         "sub": str(user_id),
-        "jti": str(token_id),
-        "typ": "refresh",
+        "type": "refresh",
         "exp": expire,
     }
+    if token_id is not None:
+        payload["jti"] = str(token_id)
     return jwt.encode(
         payload,
         settings.jwt_secret_key,
@@ -61,20 +49,14 @@ def create_refresh_token(
     )
 
 
-def decode_access_token(token: str, settings: Settings | None = None) -> dict:
+def _decode_token(token: str, settings: Settings | None = None) -> dict:
     settings = settings or get_settings()
     try:
-        payload = jwt.decode(
+        return jwt.decode(
             token,
             settings.jwt_secret_key,
             algorithms=[settings.jwt_algorithm],
         )
-        if payload.get("type") != "access":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token type",
-            )
-        return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -87,14 +69,19 @@ def decode_access_token(token: str, settings: Settings | None = None) -> dict:
         )
 
 
-def decode_refresh_token(token: str, settings: Settings | None = None) -> dict:
-    payload = decode_access_token(token, settings)
-    if payload.get("typ") != "refresh":
+def decode_access_token(token: str, settings: Settings | None = None) -> dict:
+    payload = _decode_token(token, settings)
+    if payload.get("type") != "access":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token",
+            detail="Invalid token type",
         )
-    if "jti" not in payload:
+    return payload
+
+
+def decode_refresh_token(token: str, settings: Settings | None = None) -> dict:
+    payload = _decode_token(token, settings)
+    if payload.get("type") != "refresh":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",

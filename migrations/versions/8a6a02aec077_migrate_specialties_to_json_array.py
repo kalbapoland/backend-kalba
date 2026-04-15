@@ -5,16 +5,16 @@ Revises: 59b3a5b0396b
 Create Date: 2026-03-22 13:50:27.059255
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-import sqlmodel
 
 
 # revision identifiers, used by Alembic.
-revision: str = '8a6a02aec077'
-down_revision: Union[str, None] = '59b3a5b0396b'
+revision: str = "8a6a02aec077"
+down_revision: Union[str, None] = "59b3a5b0396b"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -43,7 +43,9 @@ def upgrade() -> None:
 
     # Drop old column and rename new one
     op.drop_column("trainer_profile", "specialties")
-    op.alter_column("trainer_profile", "specialties_json", new_column_name="specialties")
+    op.alter_column(
+        "trainer_profile", "specialties_json", new_column_name="specialties"
+    )
 
 
 def downgrade() -> None:
@@ -62,6 +64,8 @@ def downgrade() -> None:
         )
     """)
 
-    op.alter_column("trainer_profile", "specialties_str", nullable=False, server_default="''")
+    op.alter_column(
+        "trainer_profile", "specialties_str", nullable=False, server_default="''"
+    )
     op.drop_column("trainer_profile", "specialties")
     op.alter_column("trainer_profile", "specialties_str", new_column_name="specialties")

@@ -22,7 +22,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.add_column("workshop", sa.Column("deleted_at", sa.DateTime(), nullable=True))
-    op.create_index(op.f("ix_workshop_deleted_at"), "workshop", ["deleted_at"], unique=False)
+    op.create_index(
+        op.f("ix_workshop_deleted_at"), "workshop", ["deleted_at"], unique=False
+    )
 
     op.create_table(
         "refresh_token",
@@ -35,8 +37,15 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["user.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f("ix_refresh_token_token_hash"), "refresh_token", ["token_hash"], unique=True)
-    op.create_index(op.f("ix_refresh_token_user_id"), "refresh_token", ["user_id"], unique=False)
+    op.create_index(
+        op.f("ix_refresh_token_token_hash"),
+        "refresh_token",
+        ["token_hash"],
+        unique=True,
+    )
+    op.create_index(
+        op.f("ix_refresh_token_user_id"), "refresh_token", ["user_id"], unique=False
+    )
 
     op.add_column(
         "trainer_profile",

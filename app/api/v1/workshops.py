@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlmodel import select
+from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.security import get_current_user_id
@@ -11,6 +11,7 @@ from app.db import get_db_session
 from app.models.user import User, UserRole
 from app.models.video import WorkshopRules
 from app.models.workshop import Workshop, WorkshopCreate, WorkshopRead, WorkshopUpdate
+from app.services.daily import DailyService, DailyServiceError, get_daily_service
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +42,14 @@ async def list_workshops(
     session: AsyncSession = Depends(get_db_session),
 ):
     """List all upcoming workshops."""
+    now = datetime.now(UTC).replace(tzinfo=None)
     statement = (
         select(Workshop)
         .where(
             Workshop.deleted_at.is_(None),
-            Workshop.start_time >= datetime.now(UTC).replace(tzinfo=None),
+            Workshop.start_time
+            + func.make_interval(0, 0, 0, 0, 0, Workshop.duration_minutes)
+            >= now,
         )
         .order_by(Workshop.start_time)
         .offset(skip)
@@ -168,6 +172,7 @@ async def delete_workshop(
     workshop_id: UUID,
     user_id: UUID = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db_session),
+    daily: DailyService = Depends(get_daily_service),
 ):
     """Delete a workshop. Only the trainer who created it may delete it."""
     workshop = await session.get(Workshop, workshop_id)
@@ -184,7 +189,18 @@ async def delete_workshop(
 
     # Clean up Daily.co room if one was created
     if workshop.video_room_id:
-        await daily.delete_room(workshop.video_room_id)
+        try:
+            await daily.delete_room(workshop.video_room_id)
+        except DailyServiceError as exc:
+            logger.error(
+                "Failed to delete Daily room for workshop %s: %s",
+                workshop_id,
+                exc.detail,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Video service unavailable",
+            ) from exc
 
     workshop.deleted_at = datetime.now(UTC).replace(tzinfo=None)
     session.add(workshop)

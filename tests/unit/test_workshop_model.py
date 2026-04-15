@@ -30,7 +30,9 @@ def test_workshop_create_accepts_future_start_time():
 
 def test_workshop_create_rejects_past_start_time():
     with pytest.raises(ValidationError) as exc_info:
-        WorkshopCreate(**_valid_payload(start_time=datetime.now(UTC) - timedelta(hours=1)))
+        WorkshopCreate(
+            **_valid_payload(start_time=datetime.now(UTC) - timedelta(hours=1))
+        )
     errors = exc_info.value.errors()
     assert any("future" in str(e["msg"]).lower() for e in errors)
 
@@ -43,7 +45,9 @@ def test_workshop_create_rejects_start_time_exactly_now():
 
 def test_workshop_create_rejects_start_time_yesterday():
     with pytest.raises(ValidationError):
-        WorkshopCreate(**_valid_payload(start_time=datetime.now(UTC) - timedelta(days=1)))
+        WorkshopCreate(
+            **_valid_payload(start_time=datetime.now(UTC) - timedelta(days=1))
+        )
 
 
 def test_workshop_create_rejects_naive_past_datetime():

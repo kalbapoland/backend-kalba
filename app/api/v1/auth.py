@@ -112,7 +112,11 @@ async def refresh_auth_token(
     token_row = (await db_session.exec(stmt)).first()
 
     now = datetime.now(UTC).replace(tzinfo=None)
-    if token_row is None or token_row.revoked_at is not None or token_row.expires_at < now:
+    if (
+        token_row is None
+        or token_row.revoked_at is not None
+        or token_row.expires_at < now
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
