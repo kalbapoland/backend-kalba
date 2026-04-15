@@ -70,37 +70,38 @@ async def join_workshop(
         if now > latest_join:
             raise HTTPException(status_code=403, detail="Workshop has ended")
 
-    # 4/5. Capacity check + participant upsert in one transaction.
-    async with session.begin():
-        if not is_host:
-            count_stmt = (
-                select(func.count())
-                .select_from(WorkshopParticipant)
-                .where(
-                    WorkshopParticipant.workshop_id == workshop_id,
-                    WorkshopParticipant.role == ParticipantRole.PARTICIPANT,
-                )
+    # 4/5. Capacity check + participant upsert.
+    if not is_host:
+        count_stmt = (
+            select(func.count())
+            .select_from(WorkshopParticipant)
+            .where(
+                WorkshopParticipant.workshop_id == workshop_id,
+                WorkshopParticipant.role == ParticipantRole.PARTICIPANT,
             )
-            count = (await session.exec(count_stmt)).one()
-            if count >= workshop.max_participants:
-                raise HTTPException(status_code=403, detail="Workshop is full")
-
-        existing_stmt = select(WorkshopParticipant).where(
-            WorkshopParticipant.user_id == user_id,
-            WorkshopParticipant.workshop_id == workshop_id,
         )
-        existing = (await session.exec(existing_stmt)).first()
-        if existing is None:
-            participant = WorkshopParticipant(
-                user_id=user_id,
-                workshop_id=workshop_id,
-                role=role,
-                joined_at=now,
-            )
-            session.add(participant)
-        else:
-            existing.joined_at = now
-            session.add(existing)
+        count = (await session.exec(count_stmt)).one()
+        if count >= workshop.max_participants:
+            raise HTTPException(status_code=403, detail="Workshop is full")
+
+    existing_stmt = select(WorkshopParticipant).where(
+        WorkshopParticipant.user_id == user_id,
+        WorkshopParticipant.workshop_id == workshop_id,
+    )
+    existing = (await session.exec(existing_stmt)).first()
+    if existing is None:
+        participant = WorkshopParticipant(
+            user_id=user_id,
+            workshop_id=workshop_id,
+            role=role,
+            joined_at=now,
+        )
+        session.add(participant)
+    else:
+        existing.joined_at = now
+        session.add(existing)
+
+    await session.commit()
 
     # 6. Ensure Daily room exists (create only on first join)
     if not workshop.video_room_id:
