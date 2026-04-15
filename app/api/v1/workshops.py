@@ -11,7 +11,6 @@ from app.db import get_db_session
 from app.models.user import User, UserRole
 from app.models.video import WorkshopRules
 from app.models.workshop import Workshop, WorkshopCreate, WorkshopRead, WorkshopUpdate
-from app.services.daily import DailyService, get_daily_service
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +53,7 @@ async def list_workshops(
     )
     result = await session.exec(statement)
     rows = result.all()
-    logger.info("Returning %d upcoming workshops", len(rows))
+    logger.info("Returning %d upcoming/ongoing workshops", len(rows))
     return rows
 
 
@@ -101,6 +100,7 @@ async def create_workshop(
         duration_minutes=body.duration_minutes,
         price=body.price,
         max_participants=body.max_participants,
+        timezone=body.timezone,
         video_room_id=None,
     )
     session.add(workshop)
@@ -112,7 +112,13 @@ async def create_workshop(
 
     await session.commit()
     await session.refresh(workshop)
-    logger.info("Workshop %s created by trainer %s", workshop.id, user_id)
+    logger.info(
+        "Workshop created: id=%s title=%r start_time=%s trainer=%s",
+        workshop.id,
+        workshop.title,
+        workshop.start_time.isoformat(),
+        user_id,
+    )
     return workshop
 
 
@@ -162,7 +168,6 @@ async def delete_workshop(
     workshop_id: UUID,
     user_id: UUID = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db_session),
-    daily: DailyService = Depends(get_daily_service),
 ):
     """Delete a workshop. Only the trainer who created it may delete it."""
     workshop = await session.get(Workshop, workshop_id)
@@ -175,7 +180,7 @@ async def delete_workshop(
             detail="Only the workshop creator can delete this workshop",
         )
 
-    logger.info("Deleting workshop %s (requested by %s)", workshop_id, user_id)
+    logger.info("Soft-deleting workshop %s (requested by %s)", workshop_id, user_id)
 
     # Clean up Daily.co room if one was created
     if workshop.video_room_id:

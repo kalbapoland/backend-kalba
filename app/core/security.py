@@ -20,6 +20,20 @@ def create_access_token(user_id: UUID, settings: Settings | None = None) -> str:
     payload = {
         "sub": str(user_id),
         "exp": expire,
+        "type": "access",
+    }
+    return jwt.encode(
+        payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+    )
+
+
+def create_refresh_token(user_id: UUID, settings: Settings | None = None) -> str:
+    settings = settings or get_settings()
+    expire = datetime.now(UTC) + timedelta(days=settings.jwt_refresh_expire_days)
+    payload = {
+        "sub": str(user_id),
+        "exp": expire,
+        "type": "refresh",
     }
     return jwt.encode(
         payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
@@ -50,11 +64,17 @@ def create_refresh_token(
 def decode_access_token(token: str, settings: Settings | None = None) -> dict:
     settings = settings or get_settings()
     try:
-        return jwt.decode(
+        payload = jwt.decode(
             token,
             settings.jwt_secret_key,
             algorithms=[settings.jwt_algorithm],
         )
+        if payload.get("type") != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type",
+            )
+        return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
