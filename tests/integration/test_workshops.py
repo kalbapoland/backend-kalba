@@ -4,6 +4,7 @@ import pytest
 
 from app.core.security import create_access_token
 from app.models.user import User, UserRole
+from app.models.workshop import Workshop
 
 
 @pytest.fixture
@@ -354,12 +355,12 @@ async def test_create_workshop_defaults_timezone_to_utc(
     assert resp.json()["timezone"] == "UTC"
 
 
-async def test_ongoing_workshop_appears_in_list(client, trainer_token):
+async def test_ongoing_workshop_appears_in_list(client, trainer_token, db_session):
     """A workshop that has started but not ended should appear in the list."""
     payload = {
         "title": "Ongoing Session",
         "description": "",
-        "start_time": (datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
+        "start_time": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
         "duration_minutes": 500,
         "price": "0.00",
         "max_participants": 5,
@@ -370,6 +371,14 @@ async def test_ongoing_workshop_appears_in_list(client, trainer_token):
         headers={"Authorization": f"Bearer {trainer_token}"},
     )
     assert create_resp.status_code == 201
+
+    workshop = await db_session.get(Workshop, create_resp.json()["id"])
+    assert workshop is not None
+    workshop.start_time = (datetime.now(UTC) - timedelta(minutes=1)).replace(
+        tzinfo=None
+    )
+    db_session.add(workshop)
+    await db_session.commit()
 
     resp = await client.get("/api/v1/workshops/")
     assert resp.status_code == 200

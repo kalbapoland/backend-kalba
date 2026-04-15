@@ -20,13 +20,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Add new JSON column
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    trainer_columns = {
+        column["name"]: column for column in inspector.get_columns("trainer_profile")
+    }
+    specialties_column = trainer_columns.get("specialties")
+    if specialties_column is None or isinstance(specialties_column["type"], sa.JSON):
+        return
+
     op.add_column(
         "trainer_profile",
         sa.Column("specialties_json", sa.JSON(), nullable=True),
     )
-
-    # Migrate data: convert "yoga,meditation" → ["yoga", "meditation"]
     op.execute("""
         UPDATE trainer_profile
         SET specialties_json = CASE
@@ -37,11 +43,7 @@ def upgrade() -> None:
             )
         END
     """)
-
-    # Make the new column non-nullable with empty array default
     op.alter_column("trainer_profile", "specialties_json", nullable=False)
-
-    # Drop old column and rename new one
     op.drop_column("trainer_profile", "specialties")
     op.alter_column(
         "trainer_profile", "specialties_json", new_column_name="specialties"
@@ -49,21 +51,28 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Add back text column
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    trainer_columns = {
+        column["name"]: column for column in inspector.get_columns("trainer_profile")
+    }
+    specialties_column = trainer_columns.get("specialties")
+    if specialties_column is None or not isinstance(
+        specialties_column["type"], sa.JSON
+    ):
+        return
+
     op.add_column(
         "trainer_profile",
         sa.Column("specialties_str", sa.String(), nullable=True),
     )
-
-    # Convert JSON array back to comma-separated string
     op.execute("""
         UPDATE trainer_profile
         SET specialties_str = (
             SELECT string_agg(value, ',')
-            FROM json_array_elements_text(specialties)
+            FROM json_array_elements_text(specialties::json)
         )
     """)
-
     op.alter_column(
         "trainer_profile", "specialties_str", nullable=False, server_default="''"
     )

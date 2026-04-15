@@ -3,7 +3,8 @@ from typing import Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
-from sqlalchemy import JSON, Column
+from sqlalchemy import Column
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -31,7 +32,7 @@ class TrainerProfile(SQLModel, table=True):
     bio: str = ""
     specialties: list[str] = Field(
         default_factory=list,
-        sa_column=Column(JSON, nullable=False),
+        sa_column=Column(JSONB, nullable=False),
     )
 
     user: User | None = Relationship(back_populates="trainer_profile")
