@@ -119,3 +119,33 @@ fly logs --app backend-kalba
 - Pydantic models for all request/response DTOs
 - SQLModel for DB models (combines SQLAlchemy + Pydantic)
 - Keep business logic in `services/`, routing logic in `api/`
+
+## Workflow Orchestration
+
+### 1. Plan Mode Default
+
+- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
+- If something goes sideways, STOP and re-plan immediately — don't keep pushing
+- Write detailed specs upfront to reduce ambiguity
+
+### 2. Subagent Strategy
+
+- Use subagents to keep main context window clean
+- Offload research, exploration, and parallel analysis to subagents
+- One task per subagent for focused execution
+
+### 3. Self-Improvement Loop
+
+- After ANY correction from the user: note the pattern to avoid repeating it
+- Ruthlessly iterate until mistake rate drops
+
+### 4. Verification Before Done
+
+- Never mark a task complete without proving it works
+- Run tests, check logs, demonstrate correctness
+
+### Core Principles
+
+- **Simplicity First:** Make every change as simple as possible. Minimal code impact.
+- **No Laziness:** Find root causes. No temporary fixes. Senior developer standards.
+- **Minimal Impact:** Changes should only touch what's necessary.

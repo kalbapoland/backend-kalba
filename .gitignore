@@ -199,6 +199,11 @@ cython_debug/
 .claude/
 .github/agents/
 
+# AI agent generated links (source of truth is scripts/AIAgents/ — run setup.py after clone)
+/CLAUDE.md
+/.github/copilot-instructions.md
+/.github/prompts/
+
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
 #  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
