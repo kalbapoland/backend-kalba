@@ -122,6 +122,16 @@ fly logs --app backend-kalba
 
 ## Workflow Orchestration
 
+### 0. Pre-Commit Code Review (Default — Mandatory)
+
+Before executing any `git commit` command:
+1. Invoke the `code-reviewer` sub-agent on the staged changes (`git diff --cached`)
+2. Present the full review findings to the user
+3. Wait for the user to explicitly decide: approve and commit, request changes, or skip
+4. Only proceed with the commit after the user's decision
+
+Skip this step only if the user explicitly says so (e.g. "skip review", "just commit", "no review").
+
 ### 1. Plan Mode Default
 
 - Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
