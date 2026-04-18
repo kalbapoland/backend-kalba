@@ -56,6 +56,13 @@ class WorkshopCreate(SQLModel):
 - `UserRole.USER` — default; can join workshops
 - `UserRole.TRAINER` — can create/update/delete workshops, hosts video calls
 
+## Pre-Commit Code Review Workflow
+
+Before committing changes, a code review should be performed using `.github/prompts/code-reviewer.prompt.md`.
+In Copilot Chat, reference it manually: attach the prompt file and provide the staged diff (`git diff --cached`).
+The reviewer reports findings and the developer decides whether to commit, fix issues first, or explicitly skip the review.
+This step is skipped only when the developer explicitly says so.
+
 ## Rules
 
 - Business logic belongs in `services/`, never in route handlers
