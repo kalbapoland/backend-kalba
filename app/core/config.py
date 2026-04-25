@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     daily_domain: str = ""  # e.g. "kalba.daily.co"
     daily_webhook_secret: str = ""
 
+    # Expo Push
+    expo_push_url: str = "https://exp.host/--/api/v2/push/send"
+    expo_push_access_token: str = ""  # optional; required for production projects
+
     # CORS
     cors_origins: list[str] = [
         "http://localhost:3000",
