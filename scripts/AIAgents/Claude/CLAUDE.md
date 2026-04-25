@@ -125,10 +125,18 @@ fly logs --app backend-kalba
 ### 0. Pre-Commit Code Review (Default — Mandatory)
 
 Before executing any `git commit` command:
-1. Invoke the `code-reviewer` sub-agent on the staged changes (`git diff --cached`)
-2. Present the full review findings to the user
-3. Wait for the user to explicitly decide: approve and commit, request changes, or skip
-4. Only proceed with the commit after the user's decision
+1. Invoke the `code-reviewer` sub-agent on the staged changes (`git diff --cached`). The `code-reviewer` is now a **manager** that does not review itself — it dispatches the diff to seven independent specialist subagents in parallel:
+   - `review-architecture`
+   - `review-documentation`
+   - `review-coding-standards`
+   - `review-api-design`
+   - `review-performance`
+   - `review-correctness`
+   - `review-security`
+2. The manager merges the seven verbatim domain reports into a single consolidated review with a deduplicated issue list and a final verdict (`Approve` / `Request Changes` / `Block`).
+3. Present the full consolidated review (and, when relevant, the verbatim specialist reports) to the user.
+4. Wait for the user to explicitly decide: approve and commit, request changes, or skip.
+5. Only proceed with the commit after the user's decision.
 
 Skip this step only if the user explicitly says so (e.g. "skip review", "just commit", "no review").
 
