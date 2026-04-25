@@ -1,8 +1,11 @@
 import asyncio
 from collections import defaultdict, deque
 from time import time
+from uuid import UUID
 
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
+
+from app.core.security import get_current_user_id
 
 
 class InMemoryRateLimiter:
@@ -31,6 +34,7 @@ class InMemoryRateLimiter:
 
 
 _google_auth_rate_limiter = InMemoryRateLimiter(limit=5, window_seconds=60)
+_push_token_rate_limiter = InMemoryRateLimiter(limit=10, window_seconds=60)
 
 
 async def enforce_google_auth_rate_limit(request: Request) -> None:
@@ -43,4 +47,16 @@ async def enforce_google_auth_rate_limit(request: Request) -> None:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many authentication attempts. Try again in a minute.",
+        )
+
+
+async def enforce_push_token_rate_limit(
+    user_id: UUID = Depends(get_current_user_id),
+) -> None:
+    """Cap per-user writes to push-token endpoints (called on every app launch)."""
+    allowed = await _push_token_rate_limiter.hit(f"push-token:{user_id}")
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many push token updates. Try again in a minute.",
         )
