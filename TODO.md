@@ -37,18 +37,18 @@ Powiadamianie trenera X minut przed rozpoczęciem stworzonych przez niego zaję�
 **Stack:** `expo-notifications` (frontend) + Expo Push API (backend → APNs/FCM)
 
 **Backend:**
-- [x] Dodać pole `push_token: str | None` w modelu `User` (`app/models/user.py`) + migracja Alembic
-- [x] Endpoint `PUT /api/v1/users/me/push-token` do rejestracji/aktualizacji tokenu
+- [x] Dodać tabelę `push_tokens` (multi-device) + migracja Alembic
+- [x] Endpoint `PUT /api/v1/users/me/push-tokens` do rejestracji/aktualizacji tokenu
 - [x] Serwis `app/services/notifications.py` — klient Expo Push API (`https://exp.host/--/api/v2/push/send`), obsługa błędów i `DeviceNotRegistered`
-- [x] Scheduler — integracja `APScheduler` z FastAPI (`app/main.py`, lifespan); planowanie jobów na `start_time - N min`
-- [x] Hook w `app/api/v1/workshops.py` — przy `create`/`update`/`delete` dodać/zaktualizować/anulować zaplanowane powiadomienie
-- [x] Konfiguracja: `NOTIFICATION_LEAD_MINUTES` w `app/core/config.py` (domyślnie 15)
+- [x] Scheduler — pętla pollingowa w FastAPI lifespan (`app/services/scheduler.py`) z idempotentnym markerem `reminder_sent_at`
+- [x] Hook w `app/api/v1/workshops.py` — przy zmianie `start_time` / `reminder_minutes_before` resetuje `reminder_sent_at` (re-arm)
+- [x] Konfiguracja: `notification_lead_minutes_default`, `notification_poll_seconds`, `notifications_enabled` w `app/core/config.py`
 - [x] Testy: unit dla serwisu (mock Expo), integracyjne dla schedulera
 
 **Frontend (Expo):**
 - [x] Instalacja `expo-notifications`
 - [x] Flow pobrania permissions + `ExponentPushToken` przy logowaniu
-- [x] Wysłanie tokenu na backend (`PUT /users/me/push-token`)
+- [x] Wysłanie tokenu na backend (`PUT /users/me/push-tokens`) + unregister na logout (`POST /users/me/push-tokens/unregister`)
 - [x] Handler przychodzącego powiadomienia (deep link do ekranu warsztatu po tapnięciu)
 - [x] Development build (Expo Go nie obsługuje push — wymagany `expo-dev-client`, już jest w zależnościach)
 
