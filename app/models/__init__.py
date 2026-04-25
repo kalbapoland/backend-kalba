@@ -4,6 +4,7 @@ from app.models.auth import (
     RefreshToken,
     RefreshTokenRequest,
 )
+from app.models.notification import PushPlatform, PushToken, PushTokenRegister
 from app.models.user import TrainerProfile, User, UserRead, UserRole
 from app.models.video import (
     HostAction,
@@ -29,6 +30,9 @@ __all__ = [
     "JoinResponse",
     "LateJoinBehavior",
     "ParticipantRole",
+    "PushPlatform",
+    "PushToken",
+    "PushTokenRegister",
     "RulesRead",
     "TrainerProfile",
     "User",
