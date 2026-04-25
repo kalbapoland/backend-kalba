@@ -58,10 +58,23 @@ class WorkshopCreate(SQLModel):
 
 ## Pre-Commit Code Review Workflow
 
-Before committing changes, a code review should be performed using `.github/prompts/code-reviewer.prompt.md`.
-In Copilot Chat, reference it manually: attach the prompt file and provide the staged diff (`git diff --cached`).
-The reviewer reports findings and the developer decides whether to commit, fix issues first, or explicitly skip the review.
-This step is skipped only when the developer explicitly says so.
+Before committing changes, a multi-agent code review should be performed.
+
+The entry point is `.github/prompts/code-reviewer.prompt.md` — a **manager** prompt that does not review code itself. It coordinates seven independent specialist reviewers, each with its own prompt file in `.github/prompts/`:
+
+- `review-correctness.prompt.md`
+- `review-architecture.prompt.md`
+- `review-api-design.prompt.md`
+- `review-coding-standards.prompt.md`
+- `review-security.prompt.md`
+- `review-performance.prompt.md`
+- `review-tests.prompt.md`
+
+The manager dispatches the staged diff to each specialist as a clean independent pass, collects each domain report, and merges them into a single consolidated review with deduplication and strictest-severity-wins rules.
+
+In Copilot Chat: reference the manager prompt file and provide the staged diff (`git diff --cached`). The manager handles the orchestration — you do not need to invoke specialists individually unless you want a focused review of one domain.
+
+The reviewer reports findings and the developer decides whether to commit, fix issues first, or explicitly skip the review. This step is skipped only when the developer explicitly says so.
 
 ## Rules
 
