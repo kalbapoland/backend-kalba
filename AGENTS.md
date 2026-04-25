@@ -105,6 +105,15 @@ fly logs --app backend-kalba
 3. Runs Alembic migrations
 4. Runs pytest
 
+## Design Document
+
+Cross-cutting product/design decisions, current capabilities, known
+limitations, and future improvement ideas live in the **frontend** repo at
+`../frontend/docs/DESIGN.md` (single source of truth across both repos —
+the design is product-driven, not platform-specific). **Consult it before
+designing new features and update it whenever a backend-visible decision
+is made or a feature ships.** Keep entries concise and dated.
+
 ## Git Conventions
 
 - Branch names prefixed with developer name, e.g. `banaszki/feature-name`
