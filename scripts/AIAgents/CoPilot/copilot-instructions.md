@@ -56,6 +56,13 @@ class WorkshopCreate(SQLModel):
 - `UserRole.USER` — default; can join workshops
 - `UserRole.TRAINER` — can create/update/delete workshops, hosts video calls
 
+## Design Document
+
+Cross-cutting product/design decisions live in the frontend repo at
+`../frontend/docs/DESIGN.md` (single source of truth across both repos).
+Consult it before designing new features and update it whenever a
+backend-visible decision is made or a feature ships.
+
 ## Pre-Commit Code Review Workflow
 
 Before committing changes, a multi-agent code review should be performed.
