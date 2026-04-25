@@ -22,6 +22,8 @@ class Workshop(SQLModel, table=True):
     max_participants: int = Field(ge=1)
     video_room_id: str | None = Field(default=None)
     deleted_at: datetime | None = Field(default=None, index=True)
+    reminder_minutes_before: int = Field(default=60, ge=1)
+    reminder_sent_at: datetime | None = Field(default=None, index=True)
 
     trainer: User | None = Relationship()
     rules: Optional["WorkshopRules"] = Relationship(back_populates="workshop")
@@ -36,6 +38,14 @@ class WorkshopCreate(BaseModel):
     timezone: str = "UTC"  # IANA timezone where the event was created
     price: Decimal = Decimal("0.00")
     max_participants: int
+    reminder_minutes_before: int | None = None  # None → use server default
+
+    @field_validator("reminder_minutes_before")
+    @classmethod
+    def validate_reminder_minutes(cls, v: int | None) -> int | None:
+        if v is not None and v < 1:
+            raise ValueError("reminder_minutes_before must be >= 1")
+        return v
 
     @field_validator("start_time")
     @classmethod
@@ -55,6 +65,14 @@ class WorkshopUpdate(BaseModel):
     timezone: str | None = None
     price: Decimal | None = None
     max_participants: int | None = None
+    reminder_minutes_before: int | None = None
+
+    @field_validator("reminder_minutes_before")
+    @classmethod
+    def validate_reminder_minutes(cls, v: int | None) -> int | None:
+        if v is not None and v < 1:
+            raise ValueError("reminder_minutes_before must be >= 1")
+        return v
 
     @field_validator("start_time")
     @classmethod
@@ -78,6 +96,7 @@ class WorkshopRead(BaseModel):
     timezone: str
     price: Decimal
     max_participants: int
+    reminder_minutes_before: int
 
     @field_validator("start_time", mode="before")
     @classmethod

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.core.config import get_settings
 from app.core.security import get_current_user_id
 from app.db import get_db_session
 from app.models.user import User, UserRole
@@ -96,6 +97,13 @@ async def create_workshop(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    settings = get_settings()
+    reminder_minutes = (
+        body.reminder_minutes_before
+        if body.reminder_minutes_before is not None
+        else settings.notification_lead_minutes_default
+    )
+
     workshop = Workshop(
         trainer_id=user_id,
         title=body.title,
@@ -106,6 +114,7 @@ async def create_workshop(
         max_participants=body.max_participants,
         timezone=body.timezone,
         video_room_id=None,
+        reminder_minutes_before=reminder_minutes,
     )
     session.add(workshop)
     await session.flush()
@@ -153,8 +162,26 @@ async def update_workshop(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    # Re-arm the reminder if the schedule moves or the lead time changes —
+    # the previous "sent" marker no longer reflects user intent.
+    rearm_reminder = (
+        ("start_time" in update_data and update_data["start_time"] != workshop.start_time)
+        or (
+            "reminder_minutes_before" in update_data
+            and update_data["reminder_minutes_before"] is not None
+            and update_data["reminder_minutes_before"] != workshop.reminder_minutes_before
+        )
+    )
+
     for field, value in update_data.items():
         setattr(workshop, field, value)
+
+    if (
+        rearm_reminder
+        and workshop.reminder_sent_at is not None
+        and workshop.deleted_at is None
+    ):
+        workshop.reminder_sent_at = None
 
     session.add(workshop)
     await session.commit()
