@@ -384,3 +384,127 @@ async def test_ongoing_workshop_appears_in_list(client, trainer_token, db_sessio
     assert resp.status_code == 200
     titles = [w["title"] for w in resp.json()]
     assert "Ongoing Session" in titles
+
+
+# --- Reminder fields ---
+
+
+async def test_create_workshop_uses_default_reminder_lead_when_omitted(
+    client, trainer_token, workshop_payload
+):
+    resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["reminder_minutes_before"] == 60
+
+
+async def test_create_workshop_accepts_custom_reminder_lead(
+    client, trainer_token, workshop_payload
+):
+    workshop_payload["reminder_minutes_before"] = 15
+    resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["reminder_minutes_before"] == 15
+
+
+async def test_create_workshop_rejects_negative_reminder_lead(
+    client, trainer_token, workshop_payload
+):
+    workshop_payload["reminder_minutes_before"] = -5
+    resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 422
+
+
+async def test_update_start_time_rearms_reminder(
+    client, trainer_token, workshop_payload, db_session
+):
+    create_resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    workshop_id = create_resp.json()["id"]
+
+    workshop = await db_session.get(Workshop, workshop_id)
+    workshop.reminder_sent_at = datetime.now(UTC).replace(tzinfo=None)
+    db_session.add(workshop)
+    await db_session.commit()
+
+    resp = await client.patch(
+        f"/api/v1/workshops/{workshop_id}",
+        json={"start_time": (datetime.now(UTC) + timedelta(days=2)).isoformat()},
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 200
+
+    refreshed = await db_session.get(Workshop, workshop_id)
+    await db_session.refresh(refreshed)
+    assert refreshed.reminder_sent_at is None
+
+
+async def test_update_reminder_lead_rearms_when_changed(
+    client, trainer_token, workshop_payload, db_session
+):
+    create_resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    workshop_id = create_resp.json()["id"]
+
+    workshop = await db_session.get(Workshop, workshop_id)
+    workshop.reminder_sent_at = datetime.now(UTC).replace(tzinfo=None)
+    db_session.add(workshop)
+    await db_session.commit()
+
+    resp = await client.patch(
+        f"/api/v1/workshops/{workshop_id}",
+        json={"reminder_minutes_before": 30},
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["reminder_minutes_before"] == 30
+
+    refreshed = await db_session.get(Workshop, workshop_id)
+    await db_session.refresh(refreshed)
+    assert refreshed.reminder_sent_at is None
+
+
+async def test_update_unrelated_field_does_not_rearm_reminder(
+    client, trainer_token, workshop_payload, db_session
+):
+    create_resp = await client.post(
+        "/api/v1/workshops/",
+        json=workshop_payload,
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    workshop_id = create_resp.json()["id"]
+
+    sent_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=5)
+    workshop = await db_session.get(Workshop, workshop_id)
+    workshop.reminder_sent_at = sent_at
+    db_session.add(workshop)
+    await db_session.commit()
+
+    resp = await client.patch(
+        f"/api/v1/workshops/{workshop_id}",
+        json={"title": "Renamed"},
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 200
+
+    refreshed = await db_session.get(Workshop, workshop_id)
+    await db_session.refresh(refreshed)
+    assert refreshed.reminder_sent_at is not None
+    assert refreshed.reminder_sent_at == sent_at

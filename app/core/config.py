@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"
     expo_push_access_token: str = ""  # optional; required for production projects
 
+    # Workshop reminders
+    notification_lead_minutes_default: int = 60  # default lead time when workshop omits one
+    notification_poll_seconds: int = 60  # scheduler tick cadence
+    # Kill-switch evaluated at process startup only — toggling at runtime
+    # requires a restart. Wired into `app/services/scheduler.py:start_reminder_loop_task`.
+    notifications_enabled: bool = True
+
     # CORS
     cors_origins: list[str] = [
         "http://localhost:3000",
