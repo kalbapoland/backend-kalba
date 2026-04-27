@@ -6,12 +6,14 @@ import httpx
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from passlib.context import CryptContext
 
 from app.core.config import Settings, get_settings
 
 GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/tokeninfo"
 
 bearer_scheme = HTTPBearer()
+password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def create_access_token(user_id: UUID, settings: Settings | None = None) -> str:
@@ -91,6 +93,14 @@ def decode_refresh_token(token: str, settings: Settings | None = None) -> dict:
 
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def hash_password(password: str) -> str:
+    return password_context.hash(password)
+
+
+def verify_password(password: str, hashed_password: str) -> bool:
+    return password_context.verify(password, hashed_password)
 
 
 async def verify_google_id_token(

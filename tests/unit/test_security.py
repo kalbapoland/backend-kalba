@@ -11,6 +11,8 @@ from app.core.security import (
     create_refresh_token,
     decode_access_token,
     decode_refresh_token,
+    hash_password,
+    verify_password,
 )
 
 
@@ -132,3 +134,17 @@ def test_decode_refresh_token_with_access_token_raises_401():
     with pytest.raises(HTTPException) as exc:
         decode_refresh_token(token, settings)
     assert exc.value.status_code == 401
+
+
+def test_hash_password_uses_non_reversible_hash():
+    password = "StrongPass123"
+    hashed_password = hash_password(password)
+
+    assert hashed_password != password
+    assert verify_password(password, hashed_password) is True
+
+
+def test_verify_password_rejects_wrong_password():
+    hashed_password = hash_password("StrongPass123")
+
+    assert verify_password("WrongPass123", hashed_password) is False
