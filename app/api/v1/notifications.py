@@ -1,7 +1,8 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.rate_limit import enforce_push_token_rate_limit
@@ -31,11 +32,19 @@ async def register(
     the token is reassigned to the current user (device-keyed ownership).
 
     Returns: 204 on success, 422 on invalid Expo token format, 401 if
-    unauthenticated, 429 if the per-user rate limit is exceeded.
+    unauthenticated, 429 if the per-user rate limit is exceeded, 503 if
+    push token persistence is temporarily unavailable.
     """
-    await register_push_token(
-        session, user_id=user_id, token=body.token, platform=body.platform
-    )
+    try:
+        await register_push_token(
+            session, user_id=user_id, token=body.token, platform=body.platform
+        )
+    except SQLAlchemyError as exc:
+        logger.exception("Push token register failed for user %s", user_id, exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Push token registration is temporarily unavailable",
+        )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -54,7 +63,15 @@ async def unregister(
 
     Returns: 204 always (no info leakage about token existence), 422 on
     invalid Expo token format, 401 if unauthenticated, 429 if the
-    per-user rate limit is exceeded.
+    per-user rate limit is exceeded, 503 if token persistence is
+    temporarily unavailable.
     """
-    await unregister_push_token(session, user_id=user_id, token=body.token)
+    try:
+        await unregister_push_token(session, user_id=user_id, token=body.token)
+    except SQLAlchemyError as exc:
+        logger.exception("Push token unregister failed for user %s", user_id, exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Push token unregister is temporarily unavailable",
+        )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
