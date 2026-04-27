@@ -7,10 +7,10 @@
       "request": "launch",
       "module": "uvicorn",
       "args": ["app.main:app", "--reload", "--port", "8000"],
-      "envFile": "${workspaceFolder}/.env.local",
+      "cwd": "${workspaceFolder}",
       "jinja": true,
       "subProcess": true,
-      "description": "Runs FastAPI server on localhost:8000. Uses .env.local for environment variables.",
+      "description": "Runs FastAPI server on localhost:8000 from the workspace root. App settings load .env.local directly.",
       "presentation": {
         "order": 1
       }
@@ -21,11 +21,11 @@
       "request": "launch",
       "module": "uvicorn",
       "args": ["app.main:app", "--reload", "--host", "0.0.0.0"],
-      "envFile": "${workspaceFolder}/.env.local",
+      "cwd": "${workspaceFolder}",
       "jinja": true,
       "subProcess": true,
       "python": "${command:python.interpreterPath}",
-      "description": "Runs FastAPI server on all network interfaces (0.0.0.0). Uses .env.local for environment variables. Equivalent to: uv run uvicorn app.main:app --reload --host 0.0.0.0",
+      "description": "Runs FastAPI server on all network interfaces (0.0.0.0) from the workspace root. App settings load .env.local directly. Equivalent to: uv run uvicorn app.main:app --reload --host 0.0.0.0",
       "presentation": {
         "order": 2
       }
