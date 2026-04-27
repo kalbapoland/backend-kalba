@@ -3,7 +3,9 @@ import re
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+import sqlalchemy as sa
 from pydantic import BaseModel, ConfigDict, field_validator
+from sqlalchemy import Column
 from sqlmodel import Field, SQLModel
 
 
@@ -17,6 +19,13 @@ def _utc_now_naive() -> datetime:
 class PushPlatform(str, enum.Enum):
     IOS = "ios"
     ANDROID = "android"
+
+
+PUSH_PLATFORM_ENUM = sa.Enum(
+    PushPlatform,
+    name="pushplatform",
+    values_callable=lambda enum_cls: [member.value for member in enum_cls],
+)
 
 
 class PushToken(SQLModel, table=True):
@@ -33,7 +42,9 @@ class PushToken(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key="user.id", index=True)
     token: str = Field(unique=True, index=True)
-    platform: PushPlatform
+    platform: PushPlatform = Field(
+        sa_column=Column(PUSH_PLATFORM_ENUM, nullable=False)
+    )
     created_at: datetime = Field(default_factory=_utc_now_naive)
     last_seen_at: datetime = Field(default_factory=_utc_now_naive)
 

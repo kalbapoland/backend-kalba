@@ -36,12 +36,22 @@ async def test_register_creates_row(client, db_session, user_token, regular_user
 
 async def test_register_is_idempotent(client, db_session, user_token):
     payload = {"token": VALID_TOKEN, "platform": "android"}
-    await client.put(REGISTER_URL, json=payload, headers=auth(user_token))
+    first = await client.put(REGISTER_URL, json=payload, headers=auth(user_token))
+    assert first.status_code == 204
     resp = await client.put(REGISTER_URL, json=payload, headers=auth(user_token))
     assert resp.status_code == 204
 
     rows = (await db_session.exec(select(PushToken))).all()
     assert len(rows) == 1
+
+
+async def test_register_android_platform_round_trip(client, db_session, user_token):
+    payload = {"token": VALID_TOKEN, "platform": "android"}
+    resp = await client.put(REGISTER_URL, json=payload, headers=auth(user_token))
+    assert resp.status_code == 204
+
+    row = (await db_session.exec(select(PushToken))).one()
+    assert row.platform.value == "android"
 
 
 async def test_register_refresh_advances_last_seen_at(client, db_session, user_token):
