@@ -18,7 +18,8 @@ class User(SQLModel, table=True):
     email: str = Field(unique=True, index=True)
     full_name: str = ""
     is_active: bool = True
-    google_id: str = Field(unique=True, index=True)
+    google_id: str | None = Field(default=None, unique=True, index=True)
+    hashed_password: str | None = None
     role: UserRole = Field(default=UserRole.USER)
 
     trainer_profile: Optional["TrainerProfile"] = Relationship(back_populates="user")

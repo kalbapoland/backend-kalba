@@ -6,9 +6,102 @@ from sqlmodel import select
 
 from app.api.v1 import auth as auth_api
 from app.core.config import get_settings
-from app.core.security import create_refresh_token, hash_token
+from app.core.security import create_refresh_token, hash_token, verify_password
 from app.models.auth import RefreshToken
 from app.models.user import User, UserRole
+
+
+@pytest.mark.asyncio
+async def test_register_creates_user_with_hashed_password(client, db_session):
+    resp = await client.post(
+        "/api/v1/auth/register",
+        json={"email": "NewUser@Test.com", "password": "StrongPass123"},
+    )
+
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["access_token"]
+    assert data["refresh_token"]
+    assert "hashed_password" not in data
+
+    user = (
+        await db_session.exec(select(User).where(User.email == "newuser@test.com"))
+    ).first()
+    assert user is not None
+    assert user.hashed_password is not None
+    assert user.hashed_password != "StrongPass123"
+    assert verify_password("StrongPass123", user.hashed_password) is True
+
+
+@pytest.mark.asyncio
+async def test_register_rejects_existing_user(client, db_session):
+    existing_user = User(
+        email="exists@test.com",
+        hashed_password="already-hashed",
+        role=UserRole.USER,
+    )
+    db_session.add(existing_user)
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/v1/auth/register",
+        json={"email": "exists@test.com", "password": "StrongPass123"},
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "User already exists"
+
+
+@pytest.mark.asyncio
+async def test_register_validates_password_format(client):
+    resp = await client.post(
+        "/api/v1/auth/register",
+        json={"email": "format@test.com", "password": "short"},
+    )
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_login_returns_tokens_for_native_user(client, db_session):
+    user = User(
+        email="native@test.com",
+        hashed_password=auth_api.hash_password("StrongPass123"),
+        role=UserRole.USER,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    resp = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "native@test.com", "password": "StrongPass123"},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["access_token"]
+    assert data["refresh_token"]
+    assert data["user_id"] == str(user.id)
+
+
+@pytest.mark.asyncio
+async def test_login_rejects_invalid_credentials(client, db_session):
+    user = User(
+        email="native@test.com",
+        hashed_password=auth_api.hash_password("StrongPass123"),
+        role=UserRole.USER,
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "native@test.com", "password": "WrongPass123"},
+    )
+
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Invalid credentials"
 
 
 @pytest.mark.asyncio
