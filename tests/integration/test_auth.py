@@ -6,9 +6,19 @@ from sqlmodel import select
 
 from app.api.v1 import auth as auth_api
 from app.core.config import get_settings
+from app.core.rate_limit import _google_auth_rate_limiter
 from app.core.security import create_refresh_token, hash_token, verify_password
 from app.models.auth import RefreshToken
 from app.models.user import User, UserRole
+
+
+@pytest.fixture(autouse=True)
+def _reset_google_auth_rate_limiter():
+    """The Google auth limiter is process-wide in-memory state. Reset between
+    tests so accumulated hits do not leak across cases."""
+    _google_auth_rate_limiter.reset()
+    yield
+    _google_auth_rate_limiter.reset()
 
 
 @pytest.mark.asyncio
@@ -189,3 +199,247 @@ async def test_google_auth_is_rate_limited(client, monkeypatch):
 
     assert statuses[:5] == [200, 200, 200, 200, 200]
     assert statuses[5] == 429
+
+
+# --- /auth/google flows -----------------------------------------------------
+
+
+def _stub_google_verifier(monkeypatch, payload: dict) -> None:
+    async def _fake(_token: str) -> dict:
+        return payload
+
+    monkeypatch.setattr(auth_api, "verify_google_id_token", _fake)
+
+
+@pytest.mark.asyncio
+async def test_google_auth_creates_new_user_on_first_login(
+    client, db_session, monkeypatch
+):
+    _stub_google_verifier(
+        monkeypatch,
+        {
+            "sub": "google-new-user",
+            "email": "new@test.com",
+            "name": "New User",
+        },
+    )
+
+    resp = await client.post(
+        "/api/v1/auth/google", json={"id_token": "fake-token"}
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["access_token"]
+    assert data["refresh_token"]
+
+    user = (
+        await db_session.exec(select(User).where(User.email == "new@test.com"))
+    ).first()
+    assert user is not None
+    assert user.google_id == "google-new-user"
+    assert user.full_name == "New User"
+    assert user.hashed_password is None
+
+
+@pytest.mark.asyncio
+async def test_google_auth_returns_existing_user_by_google_id(
+    client, db_session, monkeypatch
+):
+    existing = User(
+        email="existing@test.com",
+        full_name="Existing User",
+        google_id="google-existing-id",
+        role=UserRole.USER,
+    )
+    db_session.add(existing)
+    await db_session.commit()
+    await db_session.refresh(existing)
+
+    _stub_google_verifier(
+        monkeypatch,
+        {
+            "sub": "google-existing-id",
+            "email": "existing@test.com",
+            "name": "Existing User",
+        },
+    )
+
+    resp = await client.post(
+        "/api/v1/auth/google", json={"id_token": "fake-token"}
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["user_id"] == str(existing.id)
+
+    rows = (
+        await db_session.exec(select(User).where(User.email == "existing@test.com"))
+    ).all()
+    assert len(rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_google_auth_links_existing_email_account(
+    client, db_session, monkeypatch
+):
+    """A user previously registered natively (email/password, no google_id)
+    must get linked to their Google identity on first Google login."""
+    native_user = User(
+        email="native@test.com",
+        full_name="",
+        hashed_password=auth_api.hash_password("StrongPass123"),
+        role=UserRole.USER,
+    )
+    db_session.add(native_user)
+    await db_session.commit()
+    await db_session.refresh(native_user)
+
+    _stub_google_verifier(
+        monkeypatch,
+        {
+            "sub": "google-link-id",
+            "email": "native@test.com",
+            "name": "Linked Name",
+        },
+    )
+
+    resp = await client.post(
+        "/api/v1/auth/google", json={"id_token": "fake-token"}
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["user_id"] == str(native_user.id)
+
+    await db_session.refresh(native_user)
+    assert native_user.google_id == "google-link-id"
+    assert native_user.full_name == "Linked Name"
+    # hashed_password must be preserved — a bug that wipes it would silently
+    # block the user from their native login.
+    assert native_user.hashed_password is not None
+    assert verify_password("StrongPass123", native_user.hashed_password)
+
+
+@pytest.mark.asyncio
+async def test_google_auth_rejects_email_collision_with_other_google_id(
+    client, db_session, monkeypatch
+):
+    """If email is already attached to a different google_id, refuse the
+    login with 409 — never silently re-bind the account."""
+    existing = User(
+        email="conflict@test.com",
+        full_name="Conflict User",
+        google_id="google-original-id",
+        role=UserRole.USER,
+    )
+    db_session.add(existing)
+    await db_session.commit()
+
+    _stub_google_verifier(
+        monkeypatch,
+        {
+            "sub": "google-imposter-id",
+            "email": "conflict@test.com",
+            "name": "Conflict User",
+        },
+    )
+
+    resp = await client.post(
+        "/api/v1/auth/google", json={"id_token": "fake-token"}
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "Account already linked to another Google identity"
+
+
+@pytest.mark.asyncio
+async def test_google_auth_normalizes_email_case(
+    client, db_session, monkeypatch
+):
+    """Google may return mixed-case emails. They must be normalized to
+    lowercase before lookup/storage so two casings cannot create duplicate
+    accounts."""
+    _stub_google_verifier(
+        monkeypatch,
+        {
+            "sub": "google-case-id",
+            "email": "MixedCase@Test.com",
+            "name": "Case User",
+        },
+    )
+
+    resp = await client.post(
+        "/api/v1/auth/google", json={"id_token": "fake-token"}
+    )
+    assert resp.status_code == 200
+
+    user = (
+        await db_session.exec(
+            select(User).where(User.google_id == "google-case-id")
+        )
+    ).first()
+    assert user is not None
+    assert user.email == "mixedcase@test.com"
+
+
+@pytest.mark.asyncio
+async def test_google_auth_finds_existing_user_by_normalized_email(
+    client, db_session, monkeypatch
+):
+    """Most dangerous normalization regression: an existing native user has a
+    lowercase email; Google returns the same address in mixed case. Without
+    normalization the email-fallback lookup would miss the existing user and
+    create a duplicate account with a duplicate email unique-constraint error
+    (or a silent second row if the constraint were ever dropped)."""
+    native = User(
+        email="mixedcase@test.com",
+        hashed_password=auth_api.hash_password("SomePass1"),
+        role=UserRole.USER,
+    )
+    db_session.add(native)
+    await db_session.commit()
+    await db_session.refresh(native)
+
+    _stub_google_verifier(
+        monkeypatch,
+        {
+            "sub": "google-dedup-id",
+            "email": "MixedCase@Test.com",
+            "name": "Case User",
+        },
+    )
+
+    resp = await client.post(
+        "/api/v1/auth/google", json={"id_token": "fake-token"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["user_id"] == str(native.id)
+
+    all_rows = (
+        await db_session.exec(select(User).where(User.email == "mixedcase@test.com"))
+    ).all()
+    assert len(all_rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_google_auth_propagates_verifier_failure_as_401(
+    client, monkeypatch
+):
+    """If verify_google_id_token raises (invalid token, network error, etc.)
+    the endpoint must not crash with 500 — it must surface the 401 the
+    verifier already raises."""
+    from fastapi import HTTPException, status as http_status
+
+    async def _fake_fail(_token: str) -> dict:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google ID token",
+        )
+
+    monkeypatch.setattr(auth_api, "verify_google_id_token", _fake_fail)
+
+    resp = await client.post(
+        "/api/v1/auth/google", json={"id_token": "rubbish"}
+    )
+
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Invalid Google ID token"

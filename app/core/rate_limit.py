@@ -32,6 +32,11 @@ class InMemoryRateLimiter:
             events.append(now)
             return True
 
+    def reset(self) -> None:
+        """Drop all recorded events. Intended for test isolation; the
+        process-wide in-memory state would otherwise leak across tests."""
+        self._events.clear()
+
 
 _google_auth_rate_limiter = InMemoryRateLimiter(limit=5, window_seconds=60)
 _push_token_rate_limiter = InMemoryRateLimiter(limit=10, window_seconds=60)
