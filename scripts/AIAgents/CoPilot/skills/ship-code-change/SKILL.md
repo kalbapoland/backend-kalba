@@ -12,7 +12,8 @@ Use this skill when the user wants a backend task shipped end-to-end.
 ## Branch Rules
 
 - Start new work from `main` unless the user explicitly names a different base branch.
-- Branch names must start with `banaszki/`.
+- Branch names must use the developer prefix for the current workspace, not a hardcoded `banaszki/`.
+- Derive the prefix from the developer already working in this repo or workspace convention. Examples: `banaszki/my-feature`, `bpalus/my-feature`.
 - For code-review follow-up fixes, stay on the current work branch. Do not create a new branch.
 
 ## Workflow
@@ -22,8 +23,10 @@ Use this skill when the user wants a backend task shipped end-to-end.
 ```bash
 git checkout main
 git pull
-git checkout -b banaszki/<feature-name>
+git checkout -b <developer-prefix>/<feature-name>
 ```
+
+- Replace `<developer-prefix>` with the current developer's workspace prefix.
 
 2. Stage only the files for the current task.
 
