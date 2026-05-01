@@ -42,10 +42,10 @@ def _make_workshop(*, title: str = "Yoga", lead: int = 60) -> Workshop:
 
 def test_build_reminder_payload_shape() -> None:
     workshop = _make_workshop(title="Morning Flow", lead=30)
-    msg = _build_reminder(workshop)
+    msg = _build_reminder(workshop, now=datetime(2026, 5, 1, 9, 31, 0))
 
     assert msg.title == REMINDER_TITLE
-    assert msg.body == '"Morning Flow" starts in 30 min'
+    assert msg.body == '"Morning Flow" starts in 29 minutes'
     assert msg.data == {
         "workshop_id": str(workshop.id),
         "type": "reminder",
@@ -61,9 +61,23 @@ def test_build_reminder_includes_workshop_id_in_data() -> None:
 def test_build_reminder_quotes_title_with_special_chars() -> None:
     """Title is interpolated raw — make sure odd characters don't break the body string."""
     workshop = _make_workshop(title='He said "hi"', lead=15)
-    msg = _build_reminder(workshop)
+    msg = _build_reminder(workshop, now=datetime(2026, 5, 1, 9, 47, 0))
     assert 'He said "hi"' in msg.body
-    assert msg.body.endswith("in 15 min")
+    assert msg.body.endswith("in 13 minutes")
+
+
+def test_build_reminder_uses_singular_minute() -> None:
+    workshop = _make_workshop(title="Solo", lead=30)
+    msg = _build_reminder(workshop, now=datetime(2026, 5, 1, 9, 59, 0))
+
+    assert msg.body == '"Solo" starts in 1 minute'
+
+
+def test_build_reminder_clamps_boundary_to_one_minute() -> None:
+    workshop = _make_workshop(title="Boundary", lead=30)
+    msg = _build_reminder(workshop, now=datetime(2026, 5, 1, 10, 0, 0))
+
+    assert msg.body == '"Boundary" starts in 1 minute'
 
 
 # --- Kill-switch ---
