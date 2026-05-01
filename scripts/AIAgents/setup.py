@@ -14,6 +14,7 @@ Linux/macOS: creates symlinks for both.
 The script is idempotent — already-existing links are skipped.
 """
 
+import filecmp
 import os
 import platform
 import subprocess
@@ -44,6 +45,14 @@ def _is_junction(path: Path) -> bool:
             return False
 
 
+def _same_file_contents(src: Path, dst: Path) -> bool:
+    """Return True when two regular files have identical contents."""
+    try:
+        return src.is_file() and dst.is_file() and filecmp.cmp(src, dst, shallow=False)
+    except OSError:
+        return False
+
+
 def link_file(src: Path, dst: Path) -> None:
     """Create a hardlink (Windows) or symlink (Unix) from dst → src."""
     if dst.exists() or dst.is_symlink():
@@ -56,8 +65,12 @@ def link_file(src: Path, dst: Path) -> None:
                 return
         except OSError:
             pass
-        print(f"  [warn]  {dst.relative_to(repo_root())} already exists and is not linked — skipping")
-        return
+        if _same_file_contents(src, dst):
+            dst.unlink()
+            print(f"  [sync]  {dst.relative_to(repo_root())} (replacing identical file with link)")
+        else:
+            print(f"  [warn]  {dst.relative_to(repo_root())} already exists and is not linked — skipping")
+            return
 
     dst.parent.mkdir(parents=True, exist_ok=True)
 
@@ -112,7 +125,9 @@ def main() -> int:
     # ── Directories (junction / symlink) ─────────────────────────────────────
     dirs = [
         (agents / "Claude"  / "agents",   root / ".claude"  / "agents"),
+        (agents / "Claude"  / "skills",   root / ".claude"  / "skills"),
         (agents / "CoPilot" / "prompts",  root / ".github"  / "prompts"),
+        (agents / "CoPilot" / "skills",   root / ".github"  / "skills"),
     ]
 
     errors = 0
