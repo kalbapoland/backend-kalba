@@ -28,6 +28,7 @@ The polling-loop choice over APScheduler is also documented in
 import asyncio
 import logging
 from datetime import UTC, datetime
+from math import ceil
 from uuid import UUID
 
 from sqlalchemy import func, update
@@ -52,8 +53,20 @@ def _utc_now_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-def _build_reminder(workshop: Workshop) -> PushMessage:
-    body = f'"{workshop.title}" starts in {workshop.reminder_minutes_before} min'
+def _minutes_until_start(
+    start_time: datetime, *, now: datetime | None = None
+) -> int:
+    reference_time = now or _utc_now_naive()
+    seconds_until_start = (start_time - reference_time).total_seconds()
+    return max(1, ceil(seconds_until_start / 60))
+
+
+def _build_reminder(
+    workshop: Workshop, *, now: datetime | None = None
+) -> PushMessage:
+    minutes_until_start = _minutes_until_start(workshop.start_time, now=now)
+    minute_label = "minute" if minutes_until_start == 1 else "minutes"
+    body = f'"{workshop.title}" starts in {minutes_until_start} {minute_label}'
     return PushMessage(
         title=REMINDER_TITLE,
         body=body,
