@@ -1,6 +1,6 @@
 ---
-name: ship-code-change
-description: 'Git workflow: create branch, commit, run code-reviewer, run tests, push, and open a PR for Kalba backend work. Use when shipping a finished task or preparing a backend PR.'
+name: ship-code-change-backend
+description: 'Git workflow: create branch, commit, run code-reviewer, run tests, push, and open a PR for Kalba backend work. Use when shipping a finished task or preparing a backend PR in Claude.'
 argument-hint: 'feature-name or short shipping summary'
 user-invocable: true
 ---
@@ -40,7 +40,7 @@ git checkout -b <developer-prefix>/<feature-name>
 git diff --cached
 ```
 
-- In Copilot Chat, invoke `.github/prompts/code-reviewer.prompt.md` with the staged diff.
+- In Claude, invoke the `code-reviewer` agent with the staged diff.
 - Present the full list of Required Changes to the user.
 - Apply all required changes, restage them, and rerun review if the staged diff changed.
 - Present the final review verdict and wait for explicit user approval before continuing.
@@ -73,7 +73,7 @@ $prBody = @"
 - [ ] uv run pytest -q --tb=short
 - [ ] <manual verification if needed>
 
-Generated with GitHub Copilot
+Generated with Claude
 "@
 $prBody | Set-Content -Path $prBodyPath
 git push -u origin <current-branch>
