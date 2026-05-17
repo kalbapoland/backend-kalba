@@ -1,4 +1,8 @@
-from app.services.hashtags import MAX_TAGS_PER_WORKSHOP, extract_hashtags
+from app.services.hashtags import (
+    MAX_TAGS_PER_WORKSHOP,
+    extract_hashtags,
+    normalize_tag_input,
+)
 
 
 def test_returns_empty_for_blank_input():
@@ -60,3 +64,34 @@ def test_underscore_and_digits_allowed():
 def test_hash_in_word_is_not_a_tag():
     assert extract_hashtags("foo#bar") == []
     assert extract_hashtags("email@example.com#anchor") == []
+
+
+def test_normalize_tag_input_strips_leading_hash():
+    assert normalize_tag_input("#Joga") == "joga"
+    assert normalize_tag_input("Joga") == "joga"
+    assert normalize_tag_input("##JOGA") == "joga"
+
+
+def test_normalize_tag_input_handles_polish_chars():
+    assert normalize_tag_input("Poznań") == "poznań"
+    assert normalize_tag_input("#Łódź") == "łódź"
+
+
+def test_normalize_tag_input_empty():
+    assert normalize_tag_input("") == ""
+    assert normalize_tag_input("#") == ""
+
+
+def test_normalize_tag_input_truncates_at_first_non_word_char():
+    # LIKE wildcards and whitespace get dropped at truncation — the leading
+    # run of word chars is the canonical prefix to match against `tag.name`.
+    assert normalize_tag_input("abc%def") == "abc"
+    assert normalize_tag_input("foo bar") == "foo"
+    assert normalize_tag_input("abc_def") == "abc_def"  # underscore is a word char
+
+
+def test_normalize_tag_input_wildcard_only_returns_empty():
+    # `%abc` does not start with a word char, so the leading run is empty.
+    assert normalize_tag_input("%abc") == ""
+    assert normalize_tag_input("_abc") == "_abc"  # underscore IS a word char
+    assert normalize_tag_input("!@#") == ""
