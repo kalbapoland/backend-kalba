@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import selectinload
 from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -13,6 +14,7 @@ from app.models.user import User, UserRole
 from app.models.video import WorkshopRules
 from app.models.workshop import Workshop, WorkshopCreate, WorkshopRead, WorkshopUpdate
 from app.services.daily import DailyService, DailyServiceError, get_daily_service
+from app.services.hashtags import set_workshop_tags
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,7 @@ async def list_workshops(
             + func.make_interval(0, 0, 0, 0, 0, Workshop.duration_minutes)
             >= now,
         )
+        .options(selectinload(Workshop.tags))
         .order_by(Workshop.start_time)
         .offset(skip)
         .limit(limit)
@@ -68,7 +71,13 @@ async def get_workshop(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Get a single workshop by ID."""
-    workshop = await session.get(Workshop, workshop_id)
+    statement = (
+        select(Workshop)
+        .where(Workshop.id == workshop_id)
+        .options(selectinload(Workshop.tags))
+    )
+    result = await session.exec(statement)
+    workshop = result.first()
     if workshop is None or workshop.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Workshop not found")
     logger.info("Workshop %s retrieved", workshop_id)
@@ -123,14 +132,27 @@ async def create_workshop(
     rules = WorkshopRules(workshop_id=workshop.id)
     session.add(rules)
 
+    tag_names = await set_workshop_tags(session, workshop.id, body.description)
+
     await session.commit()
-    await session.refresh(workshop)
+    # Re-query with selectinload — session.refresh() does not eager-load
+    # relationships, and accessing `workshop.tags` lazily under asyncpg raises
+    # MissingGreenlet.
+    workshop = (
+        await session.exec(
+            select(Workshop)
+            .where(Workshop.id == workshop.id)
+            .options(selectinload(Workshop.tags))
+            .execution_options(populate_existing=True)
+        )
+    ).one()
     logger.info(
-        "Workshop created: id=%s title=%r start_time=%s trainer=%s",
+        "Workshop created: id=%s title=%r start_time=%s trainer=%s tags=%s",
         workshop.id,
         workshop.title,
         workshop.start_time.isoformat(),
         user_id,
+        tag_names,
     )
     return workshop
 
@@ -142,8 +164,16 @@ async def update_workshop(
     user_id: UUID = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Update a workshop. Only the trainer who created it may edit it."""
-    workshop = await session.get(Workshop, workshop_id)
+    """Update a workshop. Only the trainer who created it may edit it.
+
+    Tags are derived from `description`; sending an empty description clears them.
+    """
+    statement = (
+        select(Workshop)
+        .where(Workshop.id == workshop_id)
+        .options(selectinload(Workshop.tags))
+    )
+    workshop = (await session.exec(statement)).first()
     if workshop is None or workshop.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Workshop not found")
 
@@ -183,9 +213,21 @@ async def update_workshop(
     ):
         workshop.reminder_sent_at = None
 
+    if "description" in update_data:
+        await set_workshop_tags(session, workshop_id, update_data["description"])
+
     session.add(workshop)
     await session.commit()
-    await session.refresh(workshop)
+    # `populate_existing=True` overrides the identity-map cache so the freshly
+    # rewritten `tags` collection is reloaded after the link-row swap.
+    workshop = (
+        await session.exec(
+            select(Workshop)
+            .where(Workshop.id == workshop_id)
+            .options(selectinload(Workshop.tags))
+            .execution_options(populate_existing=True)
+        )
+    ).one()
     logger.info(
         "Workshop %s updated; fields changed: %s",
         workshop_id,

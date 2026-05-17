@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, field_validator
 from sqlmodel import Field, Relationship, SQLModel
 
+from app.models.tag import Tag, WorkshopTag
 from app.models.user import User
 from app.models.video import WorkshopRules, WorkshopParticipant
 
@@ -28,6 +29,7 @@ class Workshop(SQLModel, table=True):
     trainer: User | None = Relationship()
     rules: Optional["WorkshopRules"] = Relationship(back_populates="workshop")
     participants: list["WorkshopParticipant"] = Relationship()
+    tags: list["Tag"] = Relationship(link_model=WorkshopTag)
 
 
 class WorkshopCreate(BaseModel):
@@ -97,6 +99,7 @@ class WorkshopRead(BaseModel):
     price: Decimal
     max_participants: int
     reminder_minutes_before: int
+    tags: list[str] = []
 
     @field_validator("start_time", mode="before")
     @classmethod
@@ -105,3 +108,11 @@ class WorkshopRead(BaseModel):
         if isinstance(v, datetime) and v.tzinfo is None:
             return v.replace(tzinfo=timezone.utc)
         return v
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def coerce_tags(cls, v) -> list[str]:
+        """Accept a list of Tag rows or strings; emit plain names."""
+        if v is None:
+            return []
+        return [t.name if isinstance(t, Tag) else t for t in v]

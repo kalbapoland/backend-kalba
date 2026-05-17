@@ -10,6 +10,7 @@ from app.models.notification import (
     PushTokenRegister,
     PushTokenUnregister,
 )
+from app.models.tag import Tag, WorkshopTag
 from app.models.user import TrainerProfile, User, UserRead, UserRole
 from app.models.video import (
     HostAction,
@@ -40,6 +41,7 @@ __all__ = [
     "PushTokenRegister",
     "PushTokenUnregister",
     "RulesRead",
+    "Tag",
     "TrainerProfile",
     "User",
     "UserRead",
@@ -49,4 +51,5 @@ __all__ = [
     "WorkshopParticipant",
     "WorkshopRead",
     "WorkshopRules",
+    "WorkshopTag",
 ]
