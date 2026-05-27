@@ -13,6 +13,7 @@ from app.core.config import Settings, get_settings
 GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/tokeninfo"
 
 bearer_scheme = HTTPBearer()
+optional_bearer_scheme = HTTPBearer(auto_error=False)
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -149,4 +150,29 @@ def get_current_user_id(
     settings: Settings = Depends(get_settings),
 ) -> UUID:
     payload = decode_access_token(credentials.credentials, settings)
+    return UUID(payload["sub"])
+
+
+def get_optional_user_id(
+    credentials: HTTPAuthorizationCredentials | None = Depends(optional_bearer_scheme),
+    settings: Settings = Depends(get_settings),
+) -> UUID | None:
+    """Return the caller's user id when a valid Authorization header is
+    present, else None.
+
+    Used by endpoints that serve both anonymous and authenticated traffic but
+    enrich the response (e.g. `is_enrolled` flag) when the caller is known.
+
+    Invalid or expired tokens are treated as anonymous (returns `None`) — these
+    endpoints used to be fully public, so a stale token in a long-lived web
+    client should fall back to anonymous responses rather than start 401-ing
+    a request that does not strictly require auth. Endpoints that *do* require
+    auth must use `get_current_user_id` instead.
+    """
+    if credentials is None:
+        return None
+    try:
+        payload = decode_access_token(credentials.credentials, settings)
+    except HTTPException:
+        return None
     return UUID(payload["sub"])

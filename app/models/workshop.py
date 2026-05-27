@@ -1,9 +1,10 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, field_validator
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.models.tag import Tag, WorkshopTag
@@ -30,6 +31,20 @@ class Workshop(SQLModel, table=True):
     rules: Optional["WorkshopRules"] = Relationship(back_populates="workshop")
     participants: list["WorkshopParticipant"] = Relationship()
     tags: list["Tag"] = Relationship(link_model=WorkshopTag)
+
+
+class WorkshopEnrollment(SQLModel, table=True):
+    __tablename__ = "workshop_enrollment"
+    __table_args__ = (
+        UniqueConstraint("user_id", "workshop_id", name="uq_workshop_enrollment_user_workshop"),
+    )
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key="user.id", index=True)
+    workshop_id: UUID = Field(foreign_key="workshop.id", index=True)
+    enrolled_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC).replace(tzinfo=None)
+    )
 
 
 class WorkshopCreate(BaseModel):
@@ -100,6 +115,10 @@ class WorkshopRead(BaseModel):
     max_participants: int
     reminder_minutes_before: int
     tags: list[str] = []
+    # Caller-context fields set by handlers; defaults keep existing call sites working.
+    is_owner: bool = False
+    is_enrolled: bool = False
+    enrolled_count: int = 0
 
     @field_validator("start_time", mode="before")
     @classmethod

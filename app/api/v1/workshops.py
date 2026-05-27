@@ -1,18 +1,27 @@
 import logging
 from datetime import UTC, datetime, timezone
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import get_settings
-from app.core.security import get_current_user_id
+from app.core.security import get_current_user_id, get_optional_user_id
 from app.db import get_db_session
 from app.models.user import User, UserRole
 from app.models.video import WorkshopRules
-from app.models.workshop import Workshop, WorkshopCreate, WorkshopRead, WorkshopUpdate
+from app.models.workshop import (
+    Workshop,
+    WorkshopCreate,
+    WorkshopEnrollment,
+    WorkshopRead,
+    WorkshopUpdate,
+)
 from app.services.daily import DailyService, DailyServiceError, get_daily_service
 from app.services.hashtags import set_workshop_tags
 
@@ -21,6 +30,47 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/workshops", tags=["workshops"])
 MIN_WORKSHOP_YEAR = 2024
 MAX_WORKSHOP_YEAR = 2100
+
+
+async def _serialize_workshops(
+    session: AsyncSession,
+    workshops: list[Workshop],
+    caller_id: UUID | None,
+) -> list[WorkshopRead]:
+    """Build WorkshopRead instances with caller-aware fields populated.
+
+    Batches the enrollment lookups so a list endpoint stays O(1) queries instead
+    of O(N): one COUNT-grouped query for `enrolled_count`, one for the caller's
+    own enrollments.
+    """
+    if not workshops:
+        return []
+
+    workshop_ids = [w.id for w in workshops]
+
+    count_stmt = (
+        select(WorkshopEnrollment.workshop_id, func.count(WorkshopEnrollment.id))
+        .where(WorkshopEnrollment.workshop_id.in_(workshop_ids))
+        .group_by(WorkshopEnrollment.workshop_id)
+    )
+    counts: dict[UUID, int] = {row[0]: row[1] for row in (await session.exec(count_stmt)).all()}
+
+    enrolled_ids: set[UUID] = set()
+    if caller_id is not None:
+        enrolled_stmt = select(WorkshopEnrollment.workshop_id).where(
+            WorkshopEnrollment.user_id == caller_id,
+            WorkshopEnrollment.workshop_id.in_(workshop_ids),
+        )
+        enrolled_ids = set((await session.exec(enrolled_stmt)).all())
+
+    result: list[WorkshopRead] = []
+    for w in workshops:
+        read = WorkshopRead.model_validate(w, from_attributes=True)
+        read.enrolled_count = counts.get(w.id, 0)
+        read.is_owner = caller_id is not None and w.trainer_id == caller_id
+        read.is_enrolled = w.id in enrolled_ids
+        result.append(read)
+    return result
 
 
 def normalize_to_utc_naive(dt: datetime) -> datetime:
@@ -38,10 +88,18 @@ def normalize_to_utc_naive(dt: datetime) -> datetime:
     return normalized.replace(tzinfo=None)
 
 
+def _to_naive_utc(dt: datetime) -> datetime:
+    """Coerce a query-param datetime into the UTC-naive form used in storage."""
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 @router.get("/", response_model=list[WorkshopRead])
 async def list_workshops(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
+    caller_id: UUID | None = Depends(get_optional_user_id),
     session: AsyncSession = Depends(get_db_session),
 ):
     """List all upcoming workshops."""
@@ -62,12 +120,66 @@ async def list_workshops(
     result = await session.exec(statement)
     rows = result.all()
     logger.info("Returning %d upcoming/ongoing workshops", len(rows))
-    return rows
+    return await _serialize_workshops(session, list(rows), caller_id)
+
+
+@router.get("/mine", response_model=list[WorkshopRead])
+async def list_my_workshops(
+    role: Literal["trainer", "enrolled", "all"] = Query(default="all"),
+    from_: datetime | None = Query(default=None, alias="from"),
+    to: datetime | None = Query(default=None),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, ge=1, le=500),
+    caller_id: UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """List workshops the caller created (as trainer) and/or is enrolled in.
+
+    Used by the participant calendar view. Range params filter by `start_time`;
+    omit them to get every relevant workshop (past and future). The default
+    `limit` is generous (200) for a calendar use case; cap it at 500 to keep
+    the response bounded even for prolific trainers.
+    """
+    if from_ is not None and to is not None and from_ > to:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="`from` must be <= `to`",
+        )
+
+    conditions = []
+    if role in ("trainer", "all"):
+        conditions.append(Workshop.trainer_id == caller_id)
+    if role in ("enrolled", "all"):
+        conditions.append(
+            Workshop.id.in_(
+                select(WorkshopEnrollment.workshop_id).where(
+                    WorkshopEnrollment.user_id == caller_id
+                )
+            )
+        )
+
+    where_clauses = [Workshop.deleted_at.is_(None), or_(*conditions)]
+    if from_ is not None:
+        where_clauses.append(Workshop.start_time >= _to_naive_utc(from_))
+    if to is not None:
+        where_clauses.append(Workshop.start_time <= _to_naive_utc(to))
+
+    statement = (
+        select(Workshop)
+        .where(*where_clauses)
+        .options(selectinload(Workshop.tags))
+        .order_by(Workshop.start_time)
+        .offset(skip)
+        .limit(limit)
+    )
+    rows = (await session.exec(statement)).all()
+    return await _serialize_workshops(session, list(rows), caller_id)
 
 
 @router.get("/{workshop_id}", response_model=WorkshopRead)
 async def get_workshop(
     workshop_id: UUID,
+    caller_id: UUID | None = Depends(get_optional_user_id),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Get a single workshop by ID."""
@@ -81,7 +193,7 @@ async def get_workshop(
     if workshop is None or workshop.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Workshop not found")
     logger.info("Workshop %s retrieved", workshop_id)
-    return workshop
+    return (await _serialize_workshops(session, [workshop], caller_id))[0]
 
 
 @router.post("/", response_model=WorkshopRead, status_code=status.HTTP_201_CREATED)
@@ -154,7 +266,7 @@ async def create_workshop(
         user_id,
         tag_names,
     )
-    return workshop
+    return (await _serialize_workshops(session, [workshop], user_id))[0]
 
 
 @router.patch("/{workshop_id}", response_model=WorkshopRead)
@@ -233,7 +345,7 @@ async def update_workshop(
         workshop_id,
         ",".join(update_data.keys()) if update_data else "none",
     )
-    return workshop
+    return (await _serialize_workshops(session, [workshop], user_id))[0]
 
 
 @router.delete("/{workshop_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -275,3 +387,109 @@ async def delete_workshop(
     session.add(workshop)
     await session.commit()
     logger.info("Workshop %s soft-deleted", workshop_id)
+
+
+@router.post(
+    "/{workshop_id}/enroll",
+    response_model=WorkshopRead,
+)
+async def enroll_workshop(
+    workshop_id: UUID,
+    user_id: UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Enroll the caller in a workshop. Idempotent — re-enrolling is a no-op.
+
+    Capacity is enforced under a row-level lock on the workshop: the
+    `SELECT … FOR UPDATE` serializes concurrent enrollers so the COUNT and
+    INSERT cannot interleave, preventing two distinct users from over-booking
+    the last seat.
+    """
+    # Lock the workshop row for the rest of the transaction so the capacity
+    # check below cannot race against a concurrent enroller. selectinload runs
+    # as a separate query and is unaffected by FOR UPDATE on the parent row.
+    statement = (
+        select(Workshop)
+        .where(Workshop.id == workshop_id)
+        .with_for_update()
+        .options(selectinload(Workshop.tags))
+    )
+    workshop = (await session.exec(statement)).first()
+    if workshop is None or workshop.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Workshop not found")
+
+    if workshop.trainer_id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Trainers cannot enroll in their own workshop",
+        )
+
+    # Compare in UTC-naive form (storage convention) — start_time has no tzinfo.
+    now_naive = datetime.now(UTC).replace(tzinfo=None)
+    if workshop.start_time <= now_naive:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Workshop has already started",
+        )
+
+    existing = (
+        await session.exec(
+            select(WorkshopEnrollment).where(
+                WorkshopEnrollment.user_id == user_id,
+                WorkshopEnrollment.workshop_id == workshop_id,
+            )
+        )
+    ).first()
+
+    if existing is None:
+        count = (
+            await session.exec(
+                select(func.count(WorkshopEnrollment.id)).where(
+                    WorkshopEnrollment.workshop_id == workshop_id
+                )
+            )
+        ).one()
+        if count >= workshop.max_participants:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Workshop is full",
+            )
+
+        enrollment = WorkshopEnrollment(user_id=user_id, workshop_id=workshop_id)
+        session.add(enrollment)
+        try:
+            await session.commit()
+        except IntegrityError:
+            # Race with a concurrent enroll for the same (user, workshop) — the
+            # UNIQUE constraint serializes us; treat as idempotent success.
+            await session.rollback()
+        else:
+            logger.info(
+                "User %s enrolled in workshop %s", user_id, workshop_id
+            )
+
+    return (await _serialize_workshops(session, [workshop], user_id))[0]
+
+
+@router.delete(
+    "/{workshop_id}/enroll",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def unenroll_workshop(
+    workshop_id: UUID,
+    user_id: UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Cancel the caller's enrollment. Idempotent — no-op when not enrolled."""
+    enrollment = (
+        await session.exec(
+            select(WorkshopEnrollment).where(
+                WorkshopEnrollment.user_id == user_id,
+                WorkshopEnrollment.workshop_id == workshop_id,
+            )
+        )
+    ).first()
+    if enrollment is not None:
+        await session.delete(enrollment)
+        await session.commit()
+        logger.info("User %s unenrolled from workshop %s", user_id, workshop_id)

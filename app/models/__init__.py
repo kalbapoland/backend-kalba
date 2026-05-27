@@ -23,7 +23,12 @@ from app.models.video import (
     WorkshopParticipant,
     WorkshopRules,
 )
-from app.models.workshop import Workshop, WorkshopCreate, WorkshopRead
+from app.models.workshop import (
+    Workshop,
+    WorkshopCreate,
+    WorkshopEnrollment,
+    WorkshopRead,
+)
 
 __all__ = [
     "AuthResponse",
@@ -48,6 +53,7 @@ __all__ = [
     "UserRole",
     "Workshop",
     "WorkshopCreate",
+    "WorkshopEnrollment",
     "WorkshopParticipant",
     "WorkshopRead",
     "WorkshopRules",
