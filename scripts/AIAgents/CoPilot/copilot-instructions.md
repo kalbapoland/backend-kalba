@@ -67,17 +67,14 @@ backend-visible decision is made or a feature ships.
 
 Before committing changes, a multi-agent code review should be performed.
 
-The entry point is `.github/prompts/code-reviewer.prompt.md` — a **manager** prompt that does not review code itself. It coordinates seven independent specialist reviewers, each with its own prompt file in `.github/prompts/`:
+The entry point is `.github/prompts/code-reviewer.prompt.md` — a **manager** prompt that does not review code itself. For large diffs, it coordinates **max 2 independent reviewers**, each covering a subset of categories:
 
-- `review-correctness.prompt.md`
-- `review-architecture.prompt.md`
-- `review-api-design.prompt.md`
-- `review-coding-standards.prompt.md`
-- `review-security.prompt.md`
-- `review-performance.prompt.md`
-- `review-tests.prompt.md`
+- `review-risk-surface.prompt.md` — Correctness, Security, API Design
+- `review-quality-architecture.prompt.md` — Architecture, Documentation, Coding Standards, Performance, Tests
 
-The manager dispatches the staged diff to each specialist as a clean independent pass, collects each domain report, and merges them into a single consolidated review with deduplication and strictest-severity-wins rules.
+For small diffs, the manager may route to `review-single-pass.prompt.md`.
+
+The manager dispatches the staged diff as clean independent passes, collects each reviewer report, and merges them into a single consolidated review with deduplication and strictest-severity-wins rules.
 
 In Copilot Chat: reference the manager prompt file and provide the staged diff (`git diff --cached`). The manager handles the orchestration — you do not need to invoke specialists individually unless you want a focused review of one domain.
 
