@@ -134,16 +134,13 @@ is made or a feature ships.** Keep entries concise and dated.
 ### 0. Pre-Commit Code Review (Default — Mandatory)
 
 Before executing any `git commit` command:
-1. Invoke the `code-reviewer` sub-agent on the staged changes (`git diff --cached`). The `code-reviewer` is now a **manager** that does not review itself — it dispatches the diff to seven independent specialist subagents in parallel:
-   - `review-architecture`
-   - `review-documentation`
-   - `review-coding-standards`
-   - `review-api-design`
-   - `review-performance`
-   - `review-correctness`
-   - `review-security`
-2. The manager merges the seven verbatim domain reports into a single consolidated review with a deduplicated issue list and a final verdict (`Approve` / `Request Changes` / `Block`).
-3. Present the full consolidated review (and, when relevant, the verbatim specialist reports) to the user.
+1. Invoke the `code-reviewer` sub-agent on the staged changes (`git diff --cached`). The `code-reviewer` is now a **manager** that does not review itself:
+    - for small diffs, it may run `review-single-pass`
+    - for larger diffs, it dispatches to **max 2 independent reviewers** in parallel:
+      - `review-risk-surface` (Correctness, Security, API Design)
+            - `review-quality-architecture` (Architecture, Documentation, Coding Standards, Performance, Tests)
+2. The manager merges the reviewer reports into a single consolidated review with a deduplicated issue list and a final verdict (`Approve` / `Request Changes` / `Block`).
+3. Present the full consolidated review (and, when relevant, the verbatim reviewer reports) to the user.
 4. Wait for the user to explicitly decide: approve and commit, request changes, or skip.
 5. Only proceed with the commit after the user's decision.
 
