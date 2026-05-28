@@ -38,6 +38,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.config import Settings, get_settings
 from app.db import async_session
 from app.models.workshop import Workshop
+from app.services.my_kalba_notifications import (
+    create_workshop_reminder_notifications,
+)
 from app.services.notifications import (
     DispatchResult,
     PushMessage,
@@ -107,7 +110,7 @@ async def _claim_workshop(session: AsyncSession, workshop_id: UUID) -> bool:
         )
         .values(reminder_sent_at=_utc_now_naive())
     )
-    result = await session.execute(stmt)
+    result = await session.exec(stmt)
     await session.commit()
     return result.rowcount == 1
 
@@ -126,13 +129,19 @@ async def _dispatch_for_workshop(
         user_ids=[workshop.trainer_id],
         message=message,
     )
+    in_app_created = await create_workshop_reminder_notifications(
+        session,
+        workshop=workshop,
+    )
+    await session.commit()
     logger.info(
-        "Reminder fired for workshop %s (trainer=%s): sent=%d invalidated=%d failed=%d",
+        "Reminder fired for workshop %s (trainer=%s): sent=%d invalidated=%d failed=%d in_app=%d",
         workshop.id,
         workshop.trainer_id,
         result.sent,
         result.invalidated,
         result.failed,
+        in_app_created,
     )
     return result
 

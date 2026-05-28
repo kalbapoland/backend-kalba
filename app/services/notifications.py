@@ -63,7 +63,7 @@ async def register_push_token(
         index_elements=["token"],
         set_={"user_id": user_id, "last_seen_at": now},
     )
-    await session.execute(stmt)
+    await session.exec(stmt)
     await session.commit()
     logger.info("Push token upserted for user %s on %s", user_id, platform.value)
 
@@ -83,7 +83,7 @@ async def unregister_push_token(
     stmt = delete(PushToken).where(
         PushToken.token == token, PushToken.user_id == user_id
     )
-    await session.execute(stmt)
+    await session.exec(stmt)
     await session.commit()
     logger.info("Push token unregister requested by user %s", user_id)
 
@@ -302,6 +302,6 @@ def _redact_token(token: str) -> str:
 
 async def _delete_tokens(session: AsyncSession, tokens: Sequence[str]) -> None:
     stmt = delete(PushToken).where(PushToken.token.in_(tokens))
-    await session.execute(stmt)
+    await session.exec(stmt)
     await session.commit()
     logger.info("Removed %d Expo-invalidated tokens", len(tokens))
