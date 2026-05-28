@@ -68,7 +68,7 @@ async def upsert_tags(session: AsyncSession, names: list[str]) -> list[Tag]:
         .values([{"name": n} for n in names])
         .on_conflict_do_nothing(index_elements=["name"])
     )
-    await session.execute(stmt)
+    await session.exec(stmt)
 
     result = await session.exec(select(Tag).where(Tag.name.in_(names)))
     rows = result.all()
@@ -146,7 +146,7 @@ async def set_workshop_tags(
     the workshop with `selectinload(Workshop.tags)` before serializing.
     Returns the canonical list of tag names that were persisted, in order.
     """
-    await session.execute(
+    await session.exec(
         delete(WorkshopTag).where(WorkshopTag.workshop_id == workshop_id)
     )
 

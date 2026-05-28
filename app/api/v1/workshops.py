@@ -24,6 +24,9 @@ from app.models.workshop import (
 )
 from app.services.daily import DailyService, DailyServiceError, get_daily_service
 from app.services.hashtags import set_workshop_tags
+from app.services.my_kalba_notifications import (
+    create_workshop_rescheduled_notifications,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -296,6 +299,7 @@ async def update_workshop(
         )
 
     update_data = body.model_dump(exclude_unset=True)
+    previous_start_time = workshop.start_time
 
     if "start_time" in update_data and update_data["start_time"] is not None:
         st = update_data["start_time"]
@@ -317,6 +321,17 @@ async def update_workshop(
 
     for field, value in update_data.items():
         setattr(workshop, field, value)
+
+    if (
+        "start_time" in update_data
+        and update_data["start_time"] is not None
+        and update_data["start_time"] != previous_start_time
+    ):
+        await create_workshop_rescheduled_notifications(
+            session,
+            workshop=workshop,
+            previous_start_time=previous_start_time,
+        )
 
     if (
         rearm_reminder
