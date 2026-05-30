@@ -22,6 +22,14 @@ import sys
 from pathlib import Path
 
 
+REQUIRED_SKILL_FILES = [
+    Path("CoPilot") / "skills" / "ship-code-change-backend" / "SKILL.md",
+    Path("CoPilot") / "skills" / "start-local-backend" / "SKILL.md",
+    Path("Claude") / "skills" / "ship-code-change-backend" / "SKILL.md",
+    Path("Claude") / "skills" / "start-local-backend" / "SKILL.md",
+]
+
+
 def repo_root() -> Path:
     """Return the repository root (three levels up from this file:
     setup.py → AIAgents/ → scripts/ → repo root)."""
@@ -116,6 +124,19 @@ def main() -> int:
     print(f"Source of truth: {agents.relative_to(root)}")
     print()
 
+    errors = 0
+
+    for rel_path in REQUIRED_SKILL_FILES:
+        skill_path = agents / rel_path
+        if not skill_path.is_file():
+            print(f"  [error] missing required skill file: {skill_path.relative_to(root)}")
+            errors += 1
+
+    if errors:
+        print()
+        print(f"Aborting setup due to {errors} missing required skill file(s).")
+        return 1
+
     # ── Files (hardlink / symlink) ────────────────────────────────────────────
     files = [
         (agents / "Claude"  / "CLAUDE.md",                root / "CLAUDE.md"),
@@ -130,7 +151,6 @@ def main() -> int:
         (agents / "CoPilot" / "skills",   root / ".github"  / "skills"),
     ]
 
-    errors = 0
     for src, dst in files:
         try:
             link_file(src, dst)
