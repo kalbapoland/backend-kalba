@@ -13,6 +13,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.config import get_settings
 from app.core.security import get_current_user_id, get_optional_user_id
 from app.db import get_db_session
+from app.models.group import Group, GroupMembership
 from app.models.user import User, UserRole
 from app.models.video import WorkshopRules
 from app.models.workshop import (
@@ -98,6 +99,42 @@ def _to_naive_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
+async def _validate_group_ownership(
+    session: AsyncSession, group_id: UUID, user_id: UUID
+) -> None:
+    """Ensure a workshop may be attached to `group_id`: the group must exist,
+    not be deleted, and be owned by the requesting trainer."""
+    group = await session.get(Group, group_id)
+    if group is None or group.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if group.trainer_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only attach workshops to a group you own",
+        )
+
+
+async def _caller_group_ids(
+    session: AsyncSession, caller_id: UUID | None
+) -> set[UUID]:
+    """Group ids the caller may see workshops in: groups they own or subscribe to.
+
+    Returns an empty set for anonymous callers — workshops are only visible to
+    members of their group, so the unauthenticated home feed is empty.
+    """
+    if caller_id is None:
+        return set()
+    owned = await session.exec(
+        select(Group.id).where(
+            Group.trainer_id == caller_id, Group.deleted_at.is_(None)
+        )
+    )
+    member = await session.exec(
+        select(GroupMembership.group_id).where(GroupMembership.user_id == caller_id)
+    )
+    return set(owned.all()) | set(member.all())
+
+
 @router.get("/", response_model=list[WorkshopRead])
 async def list_workshops(
     skip: int = Query(default=0, ge=0),
@@ -105,12 +142,21 @@ async def list_workshops(
     caller_id: UUID | None = Depends(get_optional_user_id),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """List all upcoming workshops."""
+    """List upcoming workshops from the groups the caller belongs to.
+
+    Workshops are only visible to members (or the owner) of their group, so an
+    anonymous caller — or one who has joined no groups — gets an empty list.
+    """
+    group_ids = await _caller_group_ids(session, caller_id)
+    if not group_ids:
+        return []
+
     now = datetime.now(UTC).replace(tzinfo=None)
     statement = (
         select(Workshop)
         .where(
             Workshop.deleted_at.is_(None),
+            Workshop.group_id.in_(group_ids),
             Workshop.start_time
             + func.make_interval(0, 0, 0, 0, 0, Workshop.duration_minutes)
             >= now,
@@ -122,7 +168,9 @@ async def list_workshops(
     )
     result = await session.exec(statement)
     rows = result.all()
-    logger.info("Returning %d upcoming/ongoing workshops", len(rows))
+    logger.info(
+        "Returning %d upcoming/ongoing workshops for caller %s", len(rows), caller_id
+    )
     return await _serialize_workshops(session, list(rows), caller_id)
 
 
@@ -195,6 +243,13 @@ async def get_workshop(
     workshop = result.first()
     if workshop is None or workshop.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Workshop not found")
+
+    # Only members (or the owner) of the workshop's group may view it. Return
+    # 404 rather than 403 so a non-member can't even confirm it exists.
+    group_ids = await _caller_group_ids(session, caller_id)
+    if workshop.group_id not in group_ids:
+        raise HTTPException(status_code=404, detail="Workshop not found")
+
     logger.info("Workshop %s retrieved", workshop_id)
     return (await _serialize_workshops(session, [workshop], caller_id))[0]
 
@@ -221,6 +276,8 @@ async def create_workshop(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    await _validate_group_ownership(session, body.group_id, user_id)
+
     settings = get_settings()
     reminder_minutes = (
         body.reminder_minutes_before
@@ -230,6 +287,7 @@ async def create_workshop(
 
     workshop = Workshop(
         trainer_id=user_id,
+        group_id=body.group_id,
         title=body.title,
         description=body.description,
         start_time=start_time,
@@ -437,6 +495,21 @@ async def enroll_workshop(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Trainers cannot enroll in their own workshop",
+        )
+
+    # Only members of the workshop's group may enroll.
+    is_member = (
+        await session.exec(
+            select(GroupMembership.id).where(
+                GroupMembership.user_id == user_id,
+                GroupMembership.group_id == workshop.group_id,
+            )
+        )
+    ).first()
+    if is_member is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You must join the group to enroll in its workshops",
         )
 
     # Compare in UTC-naive form (storage convention) — start_time has no tzinfo.

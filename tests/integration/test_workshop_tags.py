@@ -7,7 +7,7 @@ from app.models.tag import Tag
 
 
 @pytest.fixture
-def workshop_payload():
+def workshop_payload(group):
     return {
         "title": "Morning Meditation",
         "description": "A relaxing session",
@@ -15,6 +15,7 @@ def workshop_payload():
         "duration_minutes": 60,
         "price": "10.00",
         "max_participants": 10,
+        "group_id": str(group.id),
     }
 
 
@@ -193,7 +194,10 @@ async def test_get_workshop_returns_tags(
     )
     workshop_id = create_resp.json()["id"]
 
-    resp = await client.get(f"/api/v1/workshops/{workshop_id}")
+    resp = await client.get(
+        f"/api/v1/workshops/{workshop_id}",
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
     assert resp.status_code == 200
     assert resp.json()["tags"] == ["joga"]
 
@@ -208,7 +212,10 @@ async def test_list_workshops_returns_tags(
         headers={"Authorization": f"Bearer {trainer_token}"},
     )
 
-    resp = await client.get("/api/v1/workshops/")
+    resp = await client.get(
+        "/api/v1/workshops/",
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) == 1

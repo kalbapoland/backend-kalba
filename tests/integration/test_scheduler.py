@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from app.models.group import Group
 from app.models.workshop import Workshop
 from app.services import scheduler
 from app.services.notifications import DispatchResult, PushMessage
@@ -31,8 +32,12 @@ async def _create_workshop(
     deleted: bool = False,
     title: str = "Test Workshop",
 ) -> Workshop:
+    # Workshops must belong to a group; give each its own trainer-owned group.
+    group = Group(trainer_id=trainer.id, title="Sched Group", description="")
+    session.add(group)
     workshop = Workshop(
         trainer_id=trainer.id,
+        group_id=group.id,
         title=title,
         description="",
         start_time=_now_naive() + timedelta(minutes=minutes_until_start),

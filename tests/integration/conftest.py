@@ -10,6 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.security import create_access_token
 from app.db import _prepare_async_url, get_db_session
 from app.main import app
+from app.models.group import Group, GroupMembership
 from app.models.user import User, UserRole
 import app.db as _app_db
 import app.services.scheduler as _scheduler_module
@@ -117,3 +118,29 @@ def trainer_token(trainer):
 @pytest.fixture
 def user_token(regular_user):
     return create_access_token(regular_user.id)
+
+
+@pytest.fixture
+async def group(db_session, trainer):
+    """A group owned by `trainer`. Workshops must belong to a group."""
+    g = Group(trainer_id=trainer.id, title="Test Group", description="")
+    db_session.add(g)
+    await db_session.commit()
+    await db_session.refresh(g)
+    return g
+
+
+@pytest.fixture
+def subscribe(db_session):
+    """Callable: subscribe a user to a group so they can see/enroll its workshops.
+
+    Usage: ``await subscribe(group, regular_user)``.
+    """
+
+    async def _subscribe(group, user, role: str = "member"):
+        db_session.add(
+            GroupMembership(group_id=group.id, user_id=user.id, role=role)
+        )
+        await db_session.commit()
+
+    return _subscribe

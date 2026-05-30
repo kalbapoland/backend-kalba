@@ -15,6 +15,7 @@ from app.models.video import WorkshopRules, WorkshopParticipant
 class Workshop(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     trainer_id: UUID = Field(foreign_key="user.id", index=True)
+    group_id: UUID = Field(foreign_key="group.id", index=True)
     title: str
     description: str = ""
     start_time: datetime
@@ -55,6 +56,7 @@ class WorkshopCreate(BaseModel):
     timezone: str = "UTC"  # IANA timezone where the event was created
     price: Decimal = Decimal("0.00")
     max_participants: int
+    group_id: UUID  # workshops must belong to a group the trainer owns
     reminder_minutes_before: int | None = None  # None → use server default
 
     @field_validator("reminder_minutes_before")
@@ -113,6 +115,7 @@ class WorkshopRead(BaseModel):
     timezone: str
     price: Decimal
     max_participants: int
+    group_id: UUID
     reminder_minutes_before: int
     tags: list[str] = []
     # Caller-context fields set by handlers; defaults keep existing call sites working.
