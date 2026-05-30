@@ -8,7 +8,7 @@ from app.models.workshop import Workshop
 
 
 @pytest.fixture
-def workshop_payload():
+def workshop_payload(group):
     return {
         "title": "Morning Meditation",
         "description": "A relaxing session",
@@ -16,6 +16,7 @@ def workshop_payload():
         "duration_minutes": 60,
         "price": "10.00",
         "max_participants": 10,
+        "group_id": str(group.id),
     }
 
 
@@ -36,7 +37,10 @@ async def test_list_workshops_returns_created_workshops(
         json=workshop_payload,
         headers={"Authorization": f"Bearer {trainer_token}"},
     )
-    resp = await client.get("/api/v1/workshops/")
+    resp = await client.get(
+        "/api/v1/workshops/",
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
     assert resp.status_code == 200
     assert len(resp.json()) == 1
     assert resp.json()[0]["title"] == workshop_payload["title"]
@@ -115,7 +119,10 @@ async def test_get_workshop_by_id(client, trainer_token, workshop_payload):
     )
     workshop_id = create_resp.json()["id"]
 
-    resp = await client.get(f"/api/v1/workshops/{workshop_id}")
+    resp = await client.get(
+        f"/api/v1/workshops/{workshop_id}",
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
     assert resp.status_code == 200
     assert resp.json()["id"] == workshop_id
 
@@ -237,8 +244,9 @@ async def test_list_workshops_supports_skip_and_limit(
         )
         assert resp.status_code == 201
 
-    first_page = await client.get("/api/v1/workshops/?skip=0&limit=2")
-    second_page = await client.get("/api/v1/workshops/?skip=2&limit=2")
+    headers = {"Authorization": f"Bearer {trainer_token}"}
+    first_page = await client.get("/api/v1/workshops/?skip=0&limit=2", headers=headers)
+    second_page = await client.get("/api/v1/workshops/?skip=2&limit=2", headers=headers)
 
     assert first_page.status_code == 200
     assert second_page.status_code == 200
@@ -262,7 +270,10 @@ async def test_soft_deleted_workshop_is_not_listed(
     )
     assert delete_resp.status_code == 204
 
-    list_resp = await client.get("/api/v1/workshops/")
+    list_resp = await client.get(
+        "/api/v1/workshops/",
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
     assert list_resp.status_code == 200
     assert all(row["id"] != workshop_id for row in list_resp.json())
 
@@ -291,7 +302,9 @@ async def test_delete_workshop(client, trainer_token, workshop_payload):
 # --- Date validation ---
 
 
-async def test_create_workshop_with_past_start_time_is_rejected(client, trainer_token):
+async def test_create_workshop_with_past_start_time_is_rejected(
+    client, trainer_token, group
+):
     past_payload = {
         "title": "Past Workshop",
         "description": "",
@@ -299,6 +312,7 @@ async def test_create_workshop_with_past_start_time_is_rejected(client, trainer_
         "duration_minutes": 60,
         "price": "0.00",
         "max_participants": 5,
+        "group_id": str(group.id),
     }
     resp = await client.post(
         "/api/v1/workshops/",
@@ -323,7 +337,7 @@ async def test_create_workshop_with_future_start_time_succeeds(
     assert resp.status_code == 201
 
 
-async def test_create_workshop_stores_timezone(client, trainer_token):
+async def test_create_workshop_stores_timezone(client, trainer_token, group):
     payload = {
         "title": "LA Evening Session",
         "description": "",
@@ -332,6 +346,7 @@ async def test_create_workshop_stores_timezone(client, trainer_token):
         "timezone": "America/Los_Angeles",
         "price": "0.00",
         "max_participants": 5,
+        "group_id": str(group.id),
     }
     resp = await client.post(
         "/api/v1/workshops/",
@@ -355,7 +370,9 @@ async def test_create_workshop_defaults_timezone_to_utc(
     assert resp.json()["timezone"] == "UTC"
 
 
-async def test_ongoing_workshop_appears_in_list(client, trainer_token, db_session):
+async def test_ongoing_workshop_appears_in_list(
+    client, trainer_token, group, db_session
+):
     """A workshop that has started but not ended should appear in the list."""
     payload = {
         "title": "Ongoing Session",
@@ -364,6 +381,7 @@ async def test_ongoing_workshop_appears_in_list(client, trainer_token, db_sessio
         "duration_minutes": 500,
         "price": "0.00",
         "max_participants": 5,
+        "group_id": str(group.id),
     }
     create_resp = await client.post(
         "/api/v1/workshops/",
@@ -380,7 +398,10 @@ async def test_ongoing_workshop_appears_in_list(client, trainer_token, db_sessio
     db_session.add(workshop)
     await db_session.commit()
 
-    resp = await client.get("/api/v1/workshops/")
+    resp = await client.get(
+        "/api/v1/workshops/",
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
     assert resp.status_code == 200
     titles = [w["title"] for w in resp.json()]
     assert "Ongoing Session" in titles

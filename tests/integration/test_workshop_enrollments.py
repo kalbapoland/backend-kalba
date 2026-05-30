@@ -8,7 +8,7 @@ from app.models.workshop import Workshop, WorkshopEnrollment
 
 
 @pytest.fixture
-def workshop_payload():
+def workshop_payload(group):
     return {
         "title": "Morning Meditation",
         "description": "A relaxing session",
@@ -16,6 +16,7 @@ def workshop_payload():
         "duration_minutes": 60,
         "price": "10.00",
         "max_participants": 2,
+        "group_id": str(group.id),
     }
 
 
@@ -33,9 +34,10 @@ async def _create_workshop(client, trainer_token, payload):
 
 
 async def test_enroll_workshop_happy_path(
-    client, trainer_token, user_token, workshop_payload
+    client, trainer_token, user_token, workshop_payload, group, regular_user, subscribe
 ):
     workshop_id = await _create_workshop(client, trainer_token, workshop_payload)
+    await subscribe(group, regular_user)
 
     resp = await client.post(
         f"/api/v1/workshops/{workshop_id}/enroll",
@@ -49,9 +51,10 @@ async def test_enroll_workshop_happy_path(
 
 
 async def test_enroll_is_idempotent(
-    client, trainer_token, user_token, workshop_payload
+    client, trainer_token, user_token, workshop_payload, group, regular_user, subscribe
 ):
     workshop_id = await _create_workshop(client, trainer_token, workshop_payload)
+    await subscribe(group, regular_user)
 
     headers = {"Authorization": f"Bearer {user_token}"}
     first = await client.post(f"/api/v1/workshops/{workshop_id}/enroll", headers=headers)
@@ -88,10 +91,12 @@ async def test_enroll_unauthenticated_returns_401(client, trainer_token, worksho
 
 
 async def test_enroll_full_workshop_returns_409(
-    client, trainer_token, user_token, workshop_payload, db_session
+    client, trainer_token, user_token, workshop_payload, group, regular_user,
+    subscribe, db_session
 ):
     workshop_payload["max_participants"] = 1
     workshop_id = await _create_workshop(client, trainer_token, workshop_payload)
+    await subscribe(group, regular_user)
 
     # First enrollment by regular user
     first = await client.post(
@@ -100,7 +105,7 @@ async def test_enroll_full_workshop_returns_409(
     )
     assert first.status_code == 200
 
-    # Create a second user and try to enroll
+    # Create a second user, subscribe them, and try to enroll
     other = User(
         email="other@test.com",
         full_name="Other",
@@ -110,6 +115,7 @@ async def test_enroll_full_workshop_returns_409(
     db_session.add(other)
     await db_session.commit()
     await db_session.refresh(other)
+    await subscribe(group, other)
     other_token = create_access_token(other.id)
 
     resp = await client.post(
@@ -120,10 +126,25 @@ async def test_enroll_full_workshop_returns_409(
     assert "full" in resp.json()["detail"].lower()
 
 
+async def test_enroll_requires_group_membership(
+    client, trainer_token, user_token, workshop_payload
+):
+    """A user who has not joined the group cannot enroll in its workshops."""
+    workshop_id = await _create_workshop(client, trainer_token, workshop_payload)
+
+    resp = await client.post(
+        f"/api/v1/workshops/{workshop_id}/enroll",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert resp.status_code == 403
+
+
 async def test_enroll_started_workshop_is_rejected(
-    client, trainer_token, user_token, workshop_payload, db_session
+    client, trainer_token, user_token, workshop_payload, group, regular_user,
+    subscribe, db_session
 ):
     workshop_id = await _create_workshop(client, trainer_token, workshop_payload)
+    await subscribe(group, regular_user)
 
     # Force the workshop into the past (bypasses the create-time future check)
     workshop = await db_session.get(Workshop, workshop_id)
@@ -158,8 +179,11 @@ async def test_enroll_soft_deleted_workshop_returns_404(
 # --- DELETE /workshops/{id}/enroll ---
 
 
-async def test_unenroll_happy_path(client, trainer_token, user_token, workshop_payload):
+async def test_unenroll_happy_path(
+    client, trainer_token, user_token, workshop_payload, group, regular_user, subscribe
+):
     workshop_id = await _create_workshop(client, trainer_token, workshop_payload)
+    await subscribe(group, regular_user)
 
     headers = {"Authorization": f"Bearer {user_token}"}
     await client.post(f"/api/v1/workshops/{workshop_id}/enroll", headers=headers)
@@ -185,7 +209,8 @@ async def test_unenroll_is_idempotent(client, trainer_token, user_token, worksho
 
 
 async def test_mine_returns_owned_and_enrolled(
-    client, trainer_token, user_token, workshop_payload, db_session
+    client, trainer_token, user_token, workshop_payload, group, regular_user,
+    subscribe, db_session
 ):
     # Trainer creates A and B; user enrolls in A
     workshop_a = await _create_workshop(
@@ -200,6 +225,7 @@ async def test_mine_returns_owned_and_enrolled(
             "start_time": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
         },
     )
+    await subscribe(group, regular_user)
     user_headers = {"Authorization": f"Bearer {user_token}"}
     await client.post(f"/api/v1/workshops/{workshop_a}/enroll", headers=user_headers)
 
@@ -220,11 +246,12 @@ async def test_mine_returns_owned_and_enrolled(
 
 
 async def test_mine_role_filter(
-    client, trainer_token, user_token, workshop_payload
+    client, trainer_token, user_token, workshop_payload, group, regular_user, subscribe
 ):
     workshop_a = await _create_workshop(
         client, trainer_token, {**workshop_payload, "title": "A"}
     )
+    await subscribe(group, regular_user)
     user_headers = {"Authorization": f"Bearer {user_token}"}
     await client.post(f"/api/v1/workshops/{workshop_a}/enroll", headers=user_headers)
 
@@ -297,9 +324,10 @@ async def test_mine_requires_auth(client):
 
 
 async def test_detail_returns_is_enrolled_when_authenticated(
-    client, trainer_token, user_token, workshop_payload
+    client, trainer_token, user_token, workshop_payload, group, regular_user, subscribe
 ):
     workshop_id = await _create_workshop(client, trainer_token, workshop_payload)
+    await subscribe(group, regular_user)
     headers = {"Authorization": f"Bearer {user_token}"}
 
     before = await client.get(f"/api/v1/workshops/{workshop_id}", headers=headers)
@@ -312,17 +340,21 @@ async def test_detail_returns_is_enrolled_when_authenticated(
     assert after.json()["enrolled_count"] == 1
 
 
-async def test_detail_anonymous_has_defaults(
-    client, trainer_token, workshop_payload
+async def test_detail_hidden_from_non_member(
+    client, trainer_token, user_token, workshop_payload
 ):
+    """A non-member can't even see a workshop in a group they haven't joined."""
     workshop_id = await _create_workshop(client, trainer_token, workshop_payload)
 
-    resp = await client.get(f"/api/v1/workshops/{workshop_id}")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["is_owner"] is False
-    assert body["is_enrolled"] is False
-    assert body["enrolled_count"] == 0
+    # Anonymous and non-member callers both get 404 (existence is hidden).
+    anon = await client.get(f"/api/v1/workshops/{workshop_id}")
+    assert anon.status_code == 404
+
+    non_member = await client.get(
+        f"/api/v1/workshops/{workshop_id}",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert non_member.status_code == 404
 
 
 async def test_create_returns_is_owner_true(

@@ -25,13 +25,14 @@ def _workshop_payload(**overrides):
 
 
 async def test_my_kalba_schedule_returns_enrolled_workshops(
-    client, trainer_token, user_token
+    client, trainer_token, user_token, group, regular_user, subscribe
 ):
     workshop_id = await _create_workshop(
         client,
         trainer_token,
-        _workshop_payload(title="Scheduled Workshop"),
+        _workshop_payload(title="Scheduled Workshop", group_id=str(group.id)),
     )
+    await subscribe(group, regular_user)
 
     enroll_resp = await client.post(
         f"/api/v1/workshops/{workshop_id}/enroll",
@@ -51,13 +52,14 @@ async def test_my_kalba_schedule_returns_enrolled_workshops(
 
 
 async def test_my_kalba_dashboard_returns_goal_and_stats(
-    client, trainer_token, user_token
+    client, trainer_token, user_token, group, regular_user, subscribe
 ):
     workshop_id = await _create_workshop(
         client,
         trainer_token,
-        _workshop_payload(title="Dashboard Workshop"),
+        _workshop_payload(title="Dashboard Workshop", group_id=str(group.id)),
     )
+    await subscribe(group, regular_user)
 
     await client.post(
         f"/api/v1/workshops/{workshop_id}/enroll",
@@ -77,13 +79,14 @@ async def test_my_kalba_dashboard_returns_goal_and_stats(
 
 
 async def test_my_kalba_reschedule_creates_notification(
-    client, trainer_token, user_token
+    client, trainer_token, user_token, group, regular_user, subscribe
 ):
     workshop_id = await _create_workshop(
         client,
         trainer_token,
-        _workshop_payload(title="Reschedule Workshop"),
+        _workshop_payload(title="Reschedule Workshop", group_id=str(group.id)),
     )
+    await subscribe(group, regular_user)
 
     enroll_resp = await client.post(
         f"/api/v1/workshops/{workshop_id}/enroll",

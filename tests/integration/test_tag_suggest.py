@@ -4,7 +4,7 @@ import pytest
 
 
 @pytest.fixture
-def workshop_payload():
+def workshop_payload(group):
     return {
         "title": "Test Workshop",
         "description": "",
@@ -12,6 +12,7 @@ def workshop_payload():
         "duration_minutes": 60,
         "price": "10.00",
         "max_participants": 10,
+        "group_id": str(group.id),
     }
 
 

@@ -4,6 +4,14 @@ from app.models.auth import (
     RefreshToken,
     RefreshTokenRequest,
 )
+from app.models.group import (
+    Group,
+    GroupCreate,
+    GroupMemberRead,
+    GroupMembership,
+    GroupRead,
+    GroupUpdate,
+)
 from app.models.my_kalba import (
     MyKalbaDashboardRead,
     MyKalbaStatsRead,
@@ -44,6 +52,12 @@ from app.models.workshop import (
 __all__ = [
     "AuthResponse",
     "GoogleAuthRequest",
+    "Group",
+    "GroupCreate",
+    "GroupMemberRead",
+    "GroupMembership",
+    "GroupRead",
+    "GroupUpdate",
     "RefreshToken",
     "RefreshTokenRequest",
     "HostAction",

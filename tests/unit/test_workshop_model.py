@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -15,6 +16,7 @@ def _valid_payload(**overrides) -> dict:
         "duration_minutes": 60,
         "price": Decimal("10.00"),
         "max_participants": 10,
+        "group_id": uuid4(),
         **overrides,
     }
 
