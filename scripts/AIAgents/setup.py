@@ -23,9 +23,9 @@ from pathlib import Path
 
 
 REQUIRED_SKILL_FILES = [
-    Path("CoPilot") / "skills" / "ship-code-change-backend" / "SKILL.md",
+    Path("CoPilot") / "skills" / "ship-code-change" / "SKILL.md",
     Path("CoPilot") / "skills" / "start-local-backend" / "SKILL.md",
-    Path("Claude") / "skills" / "ship-code-change-backend" / "SKILL.md",
+    Path("Claude") / "skills" / "ship-code-change" / "SKILL.md",
     Path("Claude") / "skills" / "start-local-backend" / "SKILL.md",
 ]
 
@@ -170,7 +170,22 @@ def main() -> int:
         print(f"Done with {errors} error(s).")
         return 1
 
-    print("Done. All AI agent files are linked.")
+    sync_script = agents / "sync_shared_content.py"
+    if not sync_script.exists():
+        print(f"  [error] missing sync script: {sync_script.relative_to(root)}")
+        return 1
+
+    print("Running shared wrapper sync...")
+    sync_result = subprocess.run(
+        [sys.executable, str(sync_script)],
+        cwd=str(root),
+        check=False,
+    )
+    if sync_result.returncode != 0:
+        print(f"  [error] wrapper sync failed with exit code {sync_result.returncode}")
+        return sync_result.returncode
+
+    print("Done. All AI agent files are linked and wrappers are synced.")
     return 0
 
 
