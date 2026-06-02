@@ -81,6 +81,10 @@ uv run pytest -q --tb=short
 | `GOOGLE_ANDROID_CLIENT_ID` | Google OAuth — Android client |
 | `DAILY_API_KEY` | Daily.co API key |
 | `DAILY_DOMAIN` | Daily.co domain (e.g. `kalba.daily.co`) |
+| `BREVO_API_KEY` | Brevo API key for password-reset email (optional; when empty the reset link is logged instead of sent) |
+| `EMAIL_FROM_NAME` | Display name for outbound email (default `Kalba`) |
+| `EMAIL_FROM_ADDRESS` | Sender address — must be a verified sender in Brevo (default `kalba.poland@gmail.com`) |
+| `PASSWORD_RESET_URL_BASE` | Base URL the reset link points to — the backend serves this page itself (`app/api/web.py`). Default `https://backend-kalba.fly.dev/reset-password` |
 
 Local development: copy `.env.local.example` → `.env.local` and fill in values.
 

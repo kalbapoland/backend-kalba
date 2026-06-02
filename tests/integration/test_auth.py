@@ -8,7 +8,7 @@ from app.api.v1 import auth as auth_api
 from app.core.config import get_settings
 from app.core.rate_limit import _google_auth_rate_limiter
 from app.core.security import create_refresh_token, hash_token, verify_password
-from app.models.auth import RefreshToken
+from app.models.auth import PasswordResetToken, RefreshToken
 from app.models.user import User, UserRole
 
 
@@ -25,7 +25,11 @@ def _reset_google_auth_rate_limiter():
 async def test_register_creates_user_with_hashed_password(client, db_session):
     resp = await client.post(
         "/api/v1/auth/register",
-        json={"email": "NewUser@Test.com", "password": "StrongPass123"},
+        json={
+            "email": "NewUser@Test.com",
+            "password": "StrongPass123",
+            "full_name": "  New User  ",
+        },
     )
 
     assert resp.status_code == 201
@@ -38,9 +42,29 @@ async def test_register_creates_user_with_hashed_password(client, db_session):
         await db_session.exec(select(User).where(User.email == "newuser@test.com"))
     ).first()
     assert user is not None
+    assert user.full_name == "New User"
     assert user.hashed_password is not None
     assert user.hashed_password != "StrongPass123"
     assert verify_password("StrongPass123", user.hashed_password) is True
+
+
+@pytest.mark.asyncio
+async def test_register_requires_full_name(client):
+    resp = await client.post(
+        "/api/v1/auth/register",
+        json={"email": "noname@test.com", "password": "StrongPass123"},
+    )
+    assert resp.status_code == 422
+
+    resp_blank = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "blank@test.com",
+            "password": "StrongPass123",
+            "full_name": "   ",
+        },
+    )
+    assert resp_blank.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -55,7 +79,11 @@ async def test_register_rejects_existing_user(client, db_session):
 
     resp = await client.post(
         "/api/v1/auth/register",
-        json={"email": "exists@test.com", "password": "StrongPass123"},
+        json={
+            "email": "exists@test.com",
+            "password": "StrongPass123",
+            "full_name": "Existing Person",
+        },
     )
 
     assert resp.status_code == 409
@@ -66,7 +94,11 @@ async def test_register_rejects_existing_user(client, db_session):
 async def test_register_validates_password_format(client):
     resp = await client.post(
         "/api/v1/auth/register",
-        json={"email": "format@test.com", "password": "short"},
+        json={
+            "email": "format@test.com",
+            "password": "short",
+            "full_name": "Format User",
+        },
     )
 
     assert resp.status_code == 422
@@ -443,3 +475,244 @@ async def test_google_auth_propagates_verifier_failure_as_401(
 
     assert resp.status_code == 401
     assert resp.json()["detail"] == "Invalid Google ID token"
+
+
+# --- password reset ----------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _reset_password_reset_rate_limiter():
+    from app.core.rate_limit import _password_reset_rate_limiter
+
+    _password_reset_rate_limiter.reset()
+    yield
+    _password_reset_rate_limiter.reset()
+
+
+def _capture_reset_emails(monkeypatch) -> list[dict]:
+    """Stub EmailService.send_password_reset and record the calls."""
+    sent: list[dict] = []
+
+    async def _fake(self, *, to: str, reset_url: str) -> None:
+        sent.append({"to": to, "reset_url": reset_url})
+
+    monkeypatch.setattr(
+        "app.api.v1.auth.EmailService.send_password_reset", _fake
+    )
+    return sent
+
+
+@pytest.mark.asyncio
+async def test_forgot_password_creates_token_and_sends_email(
+    client, db_session, monkeypatch
+):
+    sent = _capture_reset_emails(monkeypatch)
+    user = User(
+        email="reset@test.com",
+        full_name="Reset User",
+        hashed_password=auth_api.hash_password("StrongPass123"),
+        role=UserRole.USER,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    resp = await client.post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "Reset@Test.com"},
+    )
+
+    assert resp.status_code == 202
+    assert len(sent) == 1
+    assert sent[0]["to"] == "reset@test.com"
+    assert "token=" in sent[0]["reset_url"]
+
+    rows = (
+        await db_session.exec(
+            select(PasswordResetToken).where(PasswordResetToken.user_id == user.id)
+        )
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].used_at is None
+
+
+@pytest.mark.asyncio
+async def test_forgot_password_unknown_email_is_silent(
+    client, db_session, monkeypatch
+):
+    sent = _capture_reset_emails(monkeypatch)
+
+    resp = await client.post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "nobody@test.com"},
+    )
+
+    assert resp.status_code == 202
+    assert sent == []
+    rows = (await db_session.exec(select(PasswordResetToken))).all()
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_forgot_password_google_only_account_is_silent(
+    client, db_session, monkeypatch
+):
+    sent = _capture_reset_emails(monkeypatch)
+    user = User(
+        email="googleonly@test.com",
+        full_name="Google User",
+        google_id="google-only-id",
+        role=UserRole.USER,
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "googleonly@test.com"},
+    )
+
+    assert resp.status_code == 202
+    assert sent == []
+    rows = (await db_session.exec(select(PasswordResetToken))).all()
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_reset_password_updates_password_and_revokes_sessions(
+    client, db_session
+):
+    user = User(
+        email="resetflow@test.com",
+        full_name="Reset Flow",
+        hashed_password=auth_api.hash_password("OldPass123"),
+        role=UserRole.USER,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    # An active refresh token that must be revoked by the reset.
+    refresh_id = uuid4()
+    refresh = create_refresh_token(user.id, token_id=refresh_id, settings=get_settings())
+    db_session.add(
+        RefreshToken(
+            id=refresh_id,
+            user_id=user.id,
+            token_hash=hash_token(refresh),
+            issued_at=datetime.now(UTC).replace(tzinfo=None),
+            expires_at=(datetime.now(UTC) + timedelta(days=30)).replace(tzinfo=None),
+        )
+    )
+
+    raw_token = "valid-reset-token"
+    db_session.add(
+        PasswordResetToken(
+            id=uuid4(),
+            user_id=user.id,
+            token_hash=hash_token(raw_token),
+            created_at=datetime.now(UTC).replace(tzinfo=None),
+            expires_at=(datetime.now(UTC) + timedelta(minutes=60)).replace(tzinfo=None),
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": raw_token, "password": "BrandNew123"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["access_token"]
+
+    await db_session.refresh(user)
+    assert verify_password("BrandNew123", user.hashed_password)
+    assert not verify_password("OldPass123", user.hashed_password)
+
+    used = (
+        await db_session.exec(
+            select(PasswordResetToken).where(
+                PasswordResetToken.token_hash == hash_token(raw_token)
+            )
+        )
+    ).first()
+    assert used is not None and used.used_at is not None
+
+    revoked = (
+        await db_session.exec(
+            select(RefreshToken).where(RefreshToken.id == refresh_id)
+        )
+    ).first()
+    assert revoked is not None and revoked.revoked_at is not None
+
+
+@pytest.mark.asyncio
+async def test_reset_password_rejects_invalid_token(client):
+    resp = await client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": "does-not-exist", "password": "BrandNew123"},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_reset_password_rejects_expired_token(client, db_session):
+    user = User(
+        email="expired@test.com",
+        full_name="Expired User",
+        hashed_password=auth_api.hash_password("OldPass123"),
+        role=UserRole.USER,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    raw_token = "expired-reset-token"
+    db_session.add(
+        PasswordResetToken(
+            id=uuid4(),
+            user_id=user.id,
+            token_hash=hash_token(raw_token),
+            created_at=(datetime.now(UTC) - timedelta(hours=2)).replace(tzinfo=None),
+            expires_at=(datetime.now(UTC) - timedelta(hours=1)).replace(tzinfo=None),
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": raw_token, "password": "BrandNew123"},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_reset_password_rejects_already_used_token(client, db_session):
+    user = User(
+        email="used@test.com",
+        full_name="Used User",
+        hashed_password=auth_api.hash_password("OldPass123"),
+        role=UserRole.USER,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    raw_token = "used-reset-token"
+    db_session.add(
+        PasswordResetToken(
+            id=uuid4(),
+            user_id=user.id,
+            token_hash=hash_token(raw_token),
+            created_at=datetime.now(UTC).replace(tzinfo=None),
+            expires_at=(datetime.now(UTC) + timedelta(minutes=60)).replace(tzinfo=None),
+            used_at=datetime.now(UTC).replace(tzinfo=None),
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": raw_token, "password": "BrandNew123"},
+    )
+    assert resp.status_code == 400

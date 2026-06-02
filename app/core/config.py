@@ -36,6 +36,17 @@ class Settings(BaseSettings):
     google_ios_client_id: str = ""
     google_android_client_id: str = ""
 
+    # Email (Brevo) — used for password reset.
+    # Brevo's free tier (300 emails/day) supports single-sender verification, so
+    # a plain address (e.g. a Gmail) can be the sender without owning a domain.
+    brevo_api_key: str = ""  # optional; when empty, reset links are logged instead of emailed
+    email_from_name: str = "Kalba"
+    email_from_address: str = "kalba.poland@gmail.com"  # must be a verified sender in Brevo
+    # Where the password-reset link points. The backend serves a reset page at
+    # this path (see app/api/web.py) and reads the `token` query param.
+    password_reset_url_base: str = "https://backend-kalba.fly.dev/reset-password"
+    password_reset_token_expire_minutes: int = 60
+
     # Daily.co
     daily_api_key: str = ""
     daily_domain: str = ""  # e.g. "kalba.daily.co"
