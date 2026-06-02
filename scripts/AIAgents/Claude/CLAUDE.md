@@ -118,6 +118,17 @@ the design is product-driven, not platform-specific). **Consult it before
 designing new features and update it whenever a backend-visible decision
 is made or a feature ships.** Keep entries concise and dated.
 
+## Test Documentation (Mandatory)
+
+**Whenever you implement a feature or change behavior that is observable in the
+app — even backend-only — you MUST update the manual test checklists in the
+frontend repo in the same change.** The source of truth is
+`../frontend-kalba/docs/MANUAL_TEST_CHECKLIST_RELEASE_REGRESSION.md` (add/adjust
+P0/P1/P2 items: happy path + key negative cases); also update the screen-by-screen
+and smoke checklists in that `docs/` folder when a flow changes. Match the existing
+style (Polish, no diacritics, `- [ ]`, P0/P1/P2). Treat missing checklist coverage
+as incomplete work.
+
 ## Git Conventions
 
 - Branch names prefixed with developer name, e.g. `banaszki/feature-name`
