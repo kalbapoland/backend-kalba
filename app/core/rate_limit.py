@@ -40,6 +40,7 @@ class InMemoryRateLimiter:
 
 _google_auth_rate_limiter = InMemoryRateLimiter(limit=5, window_seconds=60)
 _push_token_rate_limiter = InMemoryRateLimiter(limit=10, window_seconds=60)
+_password_reset_rate_limiter = InMemoryRateLimiter(limit=3, window_seconds=300)
 
 
 async def enforce_google_auth_rate_limit(request: Request) -> None:
@@ -52,6 +53,19 @@ async def enforce_google_auth_rate_limit(request: Request) -> None:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many authentication attempts. Try again in a minute.",
+        )
+
+
+async def enforce_password_reset_rate_limit(request: Request) -> None:
+    """Cap password-reset requests per client to curb email-bombing / probing."""
+    client_ip = request.client.host if request.client else "unknown"
+    key = f"password-reset:{client_ip}"
+
+    allowed = await _password_reset_rate_limiter.hit(key)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many password reset requests. Try again in a few minutes.",
         )
 
 

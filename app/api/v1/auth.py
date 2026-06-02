@@ -1,4 +1,5 @@
 import logging
+import secrets
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -8,7 +9,10 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.rate_limit import enforce_google_auth_rate_limit
+from app.core.rate_limit import (
+    enforce_google_auth_rate_limit,
+    enforce_password_reset_rate_limit,
+)
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -21,13 +25,17 @@ from app.core.security import (
 from app.db import get_db_session
 from app.models.auth import (
     AuthResponse,
+    ForgotPasswordRequest,
     GoogleAuthRequest,
     LoginRequest,
+    PasswordResetToken,
     RegisterRequest,
     RefreshToken,
     RefreshTokenRequest,
+    ResetPasswordRequest,
 )
 from app.models.user import User
+from app.services.email import EmailService
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +97,7 @@ async def register_auth(
 
     user = User(
         email=email,
+        full_name=body.full_name,
         hashed_password=hash_password(body.password),
     )
     db_session.add(user)
@@ -124,6 +133,127 @@ async def login_auth(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
         )
+
+    return await _issue_auth_response(user.id, db_session, settings)
+
+
+@router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    db_session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+    _: None = Depends(enforce_password_reset_rate_limit),
+):
+    """Begin a password reset.
+
+    Always returns 202 regardless of whether the email exists or is a native
+    account — never leak account existence. When the account is eligible
+    (exists and has a password) a reset link is emailed.
+    """
+    email = _normalize_email(str(body.email))
+    user = (await db_session.exec(select(User).where(User.email == email))).first()
+
+    # Only native (password) accounts can reset a password. Google-only accounts
+    # have no password to reset.
+    if user is not None and user.hashed_password is not None:
+        # Invalidate any outstanding tokens for this user before issuing a new one.
+        existing = (
+            await db_session.exec(
+                select(PasswordResetToken).where(
+                    PasswordResetToken.user_id == user.id,
+                    PasswordResetToken.used_at.is_(None),  # type: ignore[union-attr]
+                )
+            )
+        ).all()
+        now = datetime.now(UTC).replace(tzinfo=None)
+        for row in existing:
+            row.used_at = now
+            db_session.add(row)
+
+        raw_token = secrets.token_urlsafe(32)
+        db_session.add(
+            PasswordResetToken(
+                id=uuid4(),
+                user_id=user.id,
+                token_hash=hash_token(raw_token),
+                created_at=now,
+                expires_at=(
+                    datetime.now(UTC)
+                    + timedelta(minutes=settings.password_reset_token_expire_minutes)
+                ).replace(tzinfo=None),
+            )
+        )
+        await db_session.commit()
+
+        separator = "&" if "?" in settings.password_reset_url_base else "?"
+        reset_url = f"{settings.password_reset_url_base}{separator}token={raw_token}"
+        await EmailService(settings).send_password_reset(to=email, reset_url=reset_url)
+        logger.info("Password reset requested for %s (email dispatched)", email)
+    else:
+        logger.info(
+            "Password reset requested for %s (no eligible account; no email sent)",
+            email,
+        )
+
+    return {"message": "If an account exists, a reset link has been sent."}
+
+
+@router.post("/reset-password", response_model=AuthResponse)
+async def reset_password(
+    body: ResetPasswordRequest,
+    db_session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+):
+    """Complete a password reset with a valid token and sign the user in."""
+    token_hash = hash_token(body.token)
+    token_row = (
+        await db_session.exec(
+            select(PasswordResetToken).where(
+                PasswordResetToken.token_hash == token_hash
+            )
+        )
+    ).first()
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    if (
+        token_row is None
+        or token_row.used_at is not None
+        or token_row.expires_at < now
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This reset link is invalid or has expired.",
+        )
+
+    user = await db_session.get(User, token_row.user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This reset link is invalid or has expired.",
+        )
+
+    user.hashed_password = hash_password(body.password)
+    db_session.add(user)
+
+    token_row.used_at = now
+    db_session.add(token_row)
+
+    # Revoke all active refresh tokens — a password reset should log out any
+    # other sessions (e.g. if the reset was triggered by a compromised account).
+    active_refresh = (
+        await db_session.exec(
+            select(RefreshToken).where(
+                RefreshToken.user_id == user.id,
+                RefreshToken.revoked_at.is_(None),  # type: ignore[union-attr]
+            )
+        )
+    ).all()
+    for row in active_refresh:
+        row.revoked_at = now
+        db_session.add(row)
+
+    await db_session.commit()
+    logger.info("Password reset completed for user %s", user.id)
 
     return await _issue_auth_response(user.id, db_session, settings)
 
