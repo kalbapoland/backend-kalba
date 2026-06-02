@@ -164,3 +164,99 @@ async def reset_password_page() -> str:
     """Serve the password-reset web page. The token is read client-side from the
     query string and posted to ``/api/v1/auth/reset-password``."""
     return _RESET_PASSWORD_HTML
+
+
+_PRIVACY_HTML = """<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kalba — Polityka prywatności</title>
+<style>
+  :root {
+    --canvas: #F5F1EB; --surface: #FAF8F4; --primary: #566B52;
+    --ink: #2B2A26; --ink-body: #57564F; --ink-muted: #8C8A82; --line: #E4DFD6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; padding: 32px 18px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--canvas); color: var(--ink-body); line-height: 1.6;
+  }
+  .card {
+    max-width: 720px; margin: 0 auto; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 20px; padding: 32px;
+  }
+  h1 { color: var(--ink); font-size: 26px; margin: 0 0 4px; }
+  h2 { color: var(--ink); font-size: 18px; margin: 28px 0 8px; }
+  .updated { color: var(--ink-muted); font-size: 13px; margin: 0 0 8px; }
+  ul { padding-left: 20px; }
+  li { margin: 6px 0; }
+  a { color: var(--primary); }
+  .muted { color: var(--ink-muted); font-size: 13px; margin-top: 28px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Polityka prywatności</h1>
+    <p class="updated">Kalba · Ostatnia aktualizacja: czerwiec 2026</p>
+
+    <p>Niniejsza polityka wyjaśnia, jakie dane zbiera aplikacja Kalba, w jakim celu
+    oraz jakie masz możliwości wyboru. Ograniczamy zbieranie danych do niezbędnego
+    minimum potrzebnego do działania usługi i <strong>nie sprzedajemy Twoich danych
+    ani nie wykorzystujemy ich do reklam czy śledzenia.</strong></p>
+
+    <h2>Jakie dane zbieramy</h2>
+    <ul>
+      <li><strong>Dane konta</strong> — adres e-mail i imię. Podajesz je podczas
+      rejestracji e-mailem i hasłem lub pobieramy je z Twojego konta Google przy
+      logowaniu przez Google.</li>
+      <li><strong>Aktywność w aplikacji</strong> — warsztaty i grupy, które tworzysz,
+      do których dołączasz lub na które się zapisujesz; służą do działania
+      podstawowych funkcji aplikacji.</li>
+      <li><strong>Token powiadomień push</strong> — token urządzenia, tylko jeśli
+      wyrazisz zgodę na powiadomienia; służy do wysyłania przypomnień o warsztatach.</li>
+    </ul>
+
+    <h2>Jak wykorzystujemy dane</h2>
+    <ul>
+      <li>Do utworzenia i zabezpieczenia Twojego konta oraz logowania.</li>
+      <li>Do obsługi warsztatów, grup, sesji wideo i przypomnień.</li>
+      <li>Do wysyłania wiadomości e-mail z resetem hasła, gdy o to poprosisz.</li>
+    </ul>
+    <p>Nie korzystamy z żadnych zewnętrznych narzędzi reklamowych ani analitycznych
+    służących do śledzenia.</p>
+
+    <h2>Udostępnianie</h2>
+    <p>Dane udostępniamy wyłącznie dostawcom usług niezbędnych do działania aplikacji
+    (hosting, dostawca wideorozmów dla sesji na żywo, dostawca poczty do resetu hasła
+    oraz dostarczanie powiadomień push), wyłącznie w celu świadczenia usługi. Nie
+    sprzedajemy danych osobowych.</p>
+
+    <h2>Usuwanie konta</h2>
+    <p>W każdej chwili możesz trwale usunąć swoje konto i wszystkie powiązane dane
+    bezpośrednio w aplikacji, w zakładce <strong>Profil → Delete account</strong>.
+    Usuwa to Twój profil, sesje, zapisy i powiązane dane; tej operacji nie można
+    cofnąć.</p>
+
+    <h2>Przechowywanie danych</h2>
+    <p>Przechowujemy Twoje dane, dopóki konto jest aktywne. Po usunięciu konta
+    powiązane dane osobowe są usuwane.</p>
+
+    <h2>Kontakt</h2>
+    <p>Masz pytania dotyczące tej polityki lub swoich danych? Napisz na
+    <a href="mailto:kalba.poland@gmail.com">kalba.poland@gmail.com</a>.</p>
+
+    <p class="muted">Korzystając z aplikacji Kalba, akceptujesz niniejszą Politykę
+    prywatności.</p>
+  </div>
+</body>
+</html>
+"""
+
+
+@router.get("/privacy", response_class=HTMLResponse)
+async def privacy_policy_page() -> str:
+    """Serve the privacy policy. Linked from the app and referenced in App Store
+    Connect (we have no separate marketing site to host it on)."""
+    return _PRIVACY_HTML
