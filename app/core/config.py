@@ -53,14 +53,13 @@ class Settings(BaseSettings):
     daily_webhook_secret: str = ""
 
     # Daily.co usage budget (cost guard).
-    # Daily bills per participant-minute. The free tier grants
+    # Daily bills per participant-minute and the free tier resets on the 1st of
+    # each calendar month (UTC). The free tier grants
     # `daily_free_minutes_per_month` participant-minutes; we only ever spend up
-    # to `daily_usage_safety_ratio` of that so we never cross into paid usage.
-    # Usage is measured over a rolling window (>= the longest possible billing
-    # cycle) so the guarantee holds regardless of when Daily's cycle resets.
+    # to `daily_usage_safety_ratio` of that within the current calendar month,
+    # so we never cross into paid usage.
     daily_free_minutes_per_month: int = 10000
-    daily_usage_safety_ratio: float = 0.8  # spend at most 80% -> 8000 min
-    daily_usage_window_days: int = 31  # rolling window >= any monthly cycle
+    daily_usage_safety_ratio: float = 0.8  # spend at most 80% -> 8000 min/month
     daily_budget_enforcement_enabled: bool = True  # kill-switch (off = log only)
 
     # Expo Push

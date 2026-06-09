@@ -1,14 +1,13 @@
 """Daily.co participant-minute budget guard.
 
-Daily bills per participant-minute. To guarantee we never cross from the free
-tier into paid usage, every issued join token reserves its worst-case minutes
-(now -> room expiry) against a rolling-window cap *before* the token exists.
-While reservations stand, summed usage can never exceed the cap; once Daily
-reports actual usage via webhook, the row is settled to the real minutes,
-releasing the unused reservation.
-
-Because we measure over a rolling window at least as long as any monthly
-billing cycle, the guarantee holds no matter when Daily's cycle resets.
+Daily bills per participant-minute and the free tier resets on the 1st of each
+calendar month (UTC). To guarantee we never cross from the free tier into paid
+usage, every issued join token reserves its worst-case minutes (now -> room
+expiry) against the current month's cap *before* the token exists. While
+reservations stand, the month's summed usage can never exceed the cap; once
+Daily reports actual usage via webhook, the row is settled to the real minutes,
+releasing the unused reservation. Accounting is bucketed by calendar month —
+exactly how Daily resets — so each month is enforced independently.
 """
 
 import logging
@@ -30,6 +29,19 @@ logger = logging.getLogger(__name__)
 
 def _utcnow_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def month_start(now: datetime) -> datetime:
+    """First instant of `now`'s calendar month (UTC)."""
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def next_month_start(now: datetime) -> datetime:
+    """First instant of the month after `now` — when the budget resets."""
+    start = month_start(now)
+    if start.month == 12:
+        return start.replace(year=start.year + 1, month=1)
+    return start.replace(month=start.month + 1)
 
 
 def estimate_session_minutes(
@@ -54,13 +66,13 @@ def estimate_session_minutes(
 async def current_usage_minutes(
     session: AsyncSession, settings: Settings, now: datetime | None = None
 ) -> int:
-    """Participant-minutes committed in the rolling window.
+    """Participant-minutes committed in the current calendar month.
 
     Settled rows count their real minutes; outstanding reservations count their
     worst-case minutes. This is the value the cap is enforced against.
     """
     now = now or _utcnow_naive()
-    cutoff = now - timedelta(days=settings.daily_usage_window_days)
+    cutoff = month_start(now)
     counted = case(
         (VideoUsageSession.settled.is_(True), VideoUsageSession.actual_minutes),
         else_=VideoUsageSession.reserved_minutes,
@@ -97,7 +109,7 @@ async def reserve_seat(
     now = now or _utcnow_naive()
     est = estimate_session_minutes(workshop, now)
     cap = settings.daily_minute_budget
-    cutoff = now - timedelta(days=settings.daily_usage_window_days)
+    cutoff = month_start(now)
 
     existing_stmt = (
         select(VideoUsageSession)
@@ -125,7 +137,7 @@ async def reserve_seat(
 
     if existing is not None:
         existing.reserved_minutes = est
-        existing.created_at = now  # re-anchor the rolling window
+        existing.created_at = now  # re-anchor to the latest join
         session.add(existing)
         await session.commit()
         return ReservationResult(
@@ -209,12 +221,14 @@ async def settle_session(
 async def budget_status(
     session: AsyncSession, settings: Settings, now: datetime | None = None
 ) -> VideoBudgetStatus:
+    now = now or _utcnow_naive()
     used = await current_usage_minutes(session, settings, now)
     cap = settings.daily_minute_budget
     return VideoBudgetStatus(
         used_minutes=used,
         cap_minutes=cap,
         remaining_minutes=max(0, cap - used),
-        window_days=settings.daily_usage_window_days,
+        period_start=month_start(now),
+        period_end=next_month_start(now),
         enforced=settings.daily_budget_enforcement_enabled,
     )

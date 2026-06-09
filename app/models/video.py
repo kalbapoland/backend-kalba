@@ -112,5 +112,6 @@ class VideoBudgetStatus(BaseModel):
     used_minutes: int
     cap_minutes: int
     remaining_minutes: int
-    window_days: int
+    period_start: datetime  # first day of the current calendar month (UTC)
+    period_end: datetime  # first day of next month — when the budget resets
     enforced: bool

@@ -210,6 +210,39 @@ async def test_webhook_participant_left_settles_reservation(
     assert row.actual_minutes == 2  # ceil(120s / 60)
 
 
+async def test_prior_month_usage_does_not_count(client, db_session, trainer, group, trainer_token):
+    """Usage from a previous calendar month must not consume this month's cap."""
+    ws = await _make_workshop(db_session, trainer, group)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    last_month = now.replace(day=1) - timedelta(days=1)  # last day of prior month
+    db_session.add(
+        VideoUsageSession(
+            workshop_id=ws.id,
+            user_id=trainer.id,
+            reserved_minutes=5000,
+            actual_minutes=5000,
+            settled=True,
+            created_at=last_month,
+            settled_at=last_month,
+        )
+    )
+    await db_session.commit()
+
+    _use_settings()
+    _use_fake_daily()
+    try:
+        resp = await client.get(
+            "/api/v1/video/budget",
+            headers={"Authorization": f"Bearer {trainer_token}"},
+        )
+    finally:
+        _clear_overrides()
+
+    assert resp.status_code == 200
+    # The 5000 prior-month minutes are ignored; only the current month counts.
+    assert resp.json()["used_minutes"] == 0
+
+
 async def test_budget_endpoint_reports_status(client, db_session, trainer, group, trainer_token):
     ws = await _make_workshop(db_session, trainer, group)
     _use_settings()
@@ -232,3 +265,10 @@ async def test_budget_endpoint_reports_status(client, db_session, trainer, group
     assert body["used_minutes"] >= 60
     assert body["remaining_minutes"] == body["cap_minutes"] - body["used_minutes"]
     assert body["enforced"] is True
+    # Budget is bucketed by calendar month: period_start is the 1st, period_end
+    # is the 1st of next month (when Daily resets).
+    period_start = datetime.fromisoformat(body["period_start"])
+    period_end = datetime.fromisoformat(body["period_end"])
+    assert period_start.day == 1
+    assert period_end.day == 1
+    assert period_end > period_start
