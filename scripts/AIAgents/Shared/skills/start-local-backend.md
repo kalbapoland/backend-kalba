@@ -49,8 +49,13 @@ uv run alembic upgrade head
 4. Start FastAPI with auto-reload.
 
 ```powershell
-uv run uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --reload --port 8000 --host 0.0.0.0
 ```
+
+`--host 0.0.0.0` is required so Android emulators and physical devices on the
+LAN can reach the backend. The mobile API client rewrites `127.0.0.1` to the
+Metro LAN IP (e.g. `192.168.x.x`), which only works when the server listens on
+all interfaces.
 
 ## Verification
 
