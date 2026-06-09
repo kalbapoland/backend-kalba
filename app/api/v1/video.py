@@ -1,4 +1,5 @@
 import logging
+import math
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -17,11 +18,18 @@ from app.models.video import (
     JoinResponse,
     ParticipantRole,
     RulesRead,
+    VideoBudgetStatus,
     WorkshopParticipant,
     WorkshopRules,
 )
 from app.models.workshop import Workshop
 from app.services.daily import DailyService, DailyServiceError, get_daily_service
+from app.services.video_budget import (
+    budget_status,
+    release_reservation,
+    reserve_seat,
+    settle_session,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +78,24 @@ async def join_workshop(
         if now > latest_join:
             raise HTTPException(status_code=403, detail="Workshop has ended")
 
+    # 3.5. Daily.co budget gate — never cross from the free tier into paid
+    # usage. Reserve this join's worst-case participant-minutes up front; if it
+    # would exceed the cap, refuse the token (applies to host and participants).
+    reservation = await reserve_seat(session, settings, workshop, user_id, now=now)
+    if not reservation.allowed:
+        logger.warning(
+            "Join blocked by video budget (workshop=%s, user=%s, used=%s, est=%s, cap=%s)",
+            workshop_id,
+            user_id,
+            reservation.used_minutes,
+            reservation.estimate_minutes,
+            reservation.cap_minutes,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Video is temporarily unavailable due to monthly usage limits. Please try again later.",
+        )
+
     # 4/5. Capacity check + participant upsert.
     if not is_host:
         count_stmt = (
@@ -115,6 +141,8 @@ async def join_workshop(
             )
         except DailyServiceError as exc:
             logger.error("Failed to create Daily room on join: %s", exc.detail)
+            if reservation.created_new and reservation.reservation_id:
+                await release_reservation(session, reservation.reservation_id)
             raise HTTPException(status_code=502, detail="Video service unavailable")
 
         workshop.video_room_id = room_name
@@ -148,6 +176,8 @@ async def join_workshop(
         )
     except DailyServiceError as exc:
         logger.error("Failed to create meeting token: %s", exc.detail)
+        if reservation.created_new and reservation.reservation_id:
+            await release_reservation(session, reservation.reservation_id)
         raise HTTPException(status_code=502, detail="Video service unavailable")
 
     room_url = f"https://{settings.daily_domain}/{workshop.video_room_id}"
@@ -179,6 +209,7 @@ async def daily_webhook(
     request: Request,
     settings: Settings = Depends(get_settings),
     daily: DailyService = Depends(get_daily_service),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Receive Daily.co webhook events.
 
@@ -214,10 +245,60 @@ async def daily_webhook(
 
     logger.info("Daily webhook signature verified")
 
-    event = payload.get("event", "unknown")
+    event = payload.get("event") or payload.get("type") or "unknown"
     logger.info("Daily webhook event: %s", event)
+
+    # Reconcile real usage: when a participant leaves, replace their worst-case
+    # reservation with the minutes actually spent, freeing the unused budget.
+    if event == "participant.left":
+        await _reconcile_participant_left(payload, session)
+
     logger.info("Daily webhook processed successfully")
     return {"status": "ok"}
+
+
+async def _reconcile_participant_left(
+    payload: dict, session: AsyncSession
+) -> None:
+    """Settle a usage reservation from a Daily `participant.left` event."""
+    data = payload.get("payload", payload)
+    room = data.get("room") or data.get("room_name")
+    user_id_raw = data.get("user_id")
+    duration = data.get("duration")  # seconds spent in the call
+
+    if not room or user_id_raw is None or duration is None:
+        logger.info("participant.left missing room/user_id/duration; skipping settle")
+        return
+
+    # Room names are "kalba-{workshop_id}".
+    if not room.startswith("kalba-"):
+        return
+    try:
+        workshop_id = UUID(room[len("kalba-"):])
+        user_id = UUID(str(user_id_raw))
+    except (ValueError, AttributeError):
+        logger.info("participant.left could not parse ids (room=%s, user=%s)", room, user_id_raw)
+        return
+
+    actual_minutes = max(1, math.ceil(float(duration) / 60))
+    settled = await settle_session(session, workshop_id, user_id, actual_minutes)
+    logger.info(
+        "participant.left settle (workshop=%s, user=%s, minutes=%s, matched=%s)",
+        workshop_id,
+        user_id,
+        actual_minutes,
+        settled,
+    )
+
+
+@router.get("/budget", response_model=VideoBudgetStatus)
+async def get_video_budget(
+    _user_id: UUID = Depends(get_current_user_id),  # auth gate only
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+):
+    """Current participant-minute usage vs the cap (for monitoring)."""
+    return await budget_status(session, settings)
 
 
 @router.get("/workshops/{workshop_id}/rules", response_model=RulesRead)

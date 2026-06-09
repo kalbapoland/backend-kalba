@@ -66,7 +66,11 @@ class DailyService:
             resp = await client.post(
                 f"{DAILY_API_BASE}/rooms",
                 headers=self._headers,
-                json={"name": name, "properties": properties},
+                # "private" => a backend-issued meeting token is REQUIRED to
+                # join. This makes the backend the single chokepoint for usage,
+                # so the participant-minute budget guard cannot be bypassed by
+                # sharing the room URL.
+                json={"name": name, "privacy": "private", "properties": properties},
             )
 
         if resp.status_code != 200:

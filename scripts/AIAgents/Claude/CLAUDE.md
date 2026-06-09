@@ -85,8 +85,24 @@ uv run pytest -q --tb=short
 | `EMAIL_FROM_NAME` | Display name for outbound email (default `Kalba`) |
 | `EMAIL_FROM_ADDRESS` | Sender address — must be a verified sender in Brevo (default `kalba.poland@gmail.com`) |
 | `PASSWORD_RESET_URL_BASE` | Base URL the reset link points to — the backend serves this page itself (`app/api/web.py`). Default `https://backend-kalba.fly.dev/reset-password` |
+| `DAILY_FREE_MINUTES_PER_MONTH` | Daily.co free participant-minutes per cycle. Default `10000` |
+| `DAILY_USAGE_SAFETY_RATIO` | Fraction of the free tier we will ever spend. Default `0.8` (→ 8000 min cap) |
+| `DAILY_USAGE_WINDOW_DAYS` | Rolling window for the usage cap; must be ≥ any billing cycle. Default `31` |
+| `DAILY_BUDGET_ENFORCEMENT_ENABLED` | Kill-switch. When `false`, usage is recorded but joins are never blocked. Default `true` |
 
 Local development: copy `.env.local.example` → `.env.local` and fill in values.
+
+### Daily.co cost guard
+
+Daily bills per participant-minute. `app/services/video_budget.py` makes the
+backend the single chokepoint: rooms are **private** (token required), and every
+`/video/.../join` **reserves its worst-case minutes** (now → room expiry) against
+a rolling-window cap (`DAILY_USAGE_SAFETY_RATIO` × free tier) *before* issuing the
+token. Over the cap → `503` for everyone. The `participant.left` webhook settles
+reservations with real minutes (`video_usage_session` table). Monitor via
+`GET /api/v1/video/budget`. **The Daily webhook must be subscribed to
+`participant.left`** (see `scripts/setup_daily_webhook.py`) or reservations never
+free up (safe but over-conservative).
 
 ## Deployment
 

@@ -20,7 +20,7 @@ from app.models.my_kalba import UserGoal, UserNotification
 from app.models.notification import PushToken
 from app.models.tag import WorkshopTag
 from app.models.user import TrainerProfile, User
-from app.models.video import WorkshopParticipant, WorkshopRules
+from app.models.video import VideoUsageSession, WorkshopParticipant, WorkshopRules
 from app.models.workshop import Workshop, WorkshopEnrollment
 
 logger = logging.getLogger(__name__)
@@ -58,6 +58,11 @@ async def delete_user_account(user_id: UUID, session: AsyncSession) -> None:
             )
         )
         await session.execute(
+            sa_delete(VideoUsageSession).where(
+                VideoUsageSession.workshop_id.in_(owned_workshop_ids)
+            )
+        )
+        await session.execute(
             sa_delete(Workshop).where(Workshop.id.in_(owned_workshop_ids))
         )
 
@@ -86,6 +91,9 @@ async def delete_user_account(user_id: UUID, session: AsyncSession) -> None:
     )
     await session.execute(
         sa_delete(WorkshopParticipant).where(WorkshopParticipant.user_id == user_id)
+    )
+    await session.execute(
+        sa_delete(VideoUsageSession).where(VideoUsageSession.user_id == user_id)
     )
     await session.execute(
         sa_delete(GroupMembership).where(GroupMembership.user_id == user_id)
