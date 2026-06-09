@@ -1,10 +1,15 @@
 import enum
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 from sqlmodel import Field, Relationship, SQLModel
+
+
+def _utcnow_naive() -> datetime:
+    """Naive UTC timestamp, matching the rest of the video tables."""
+    return datetime.now(UTC).replace(tzinfo=None)
 
 if TYPE_CHECKING:
     from app.models.workshop import Workshop
@@ -54,6 +59,28 @@ class WorkshopParticipant(SQLModel, table=True):
     joined_at: datetime | None = None
 
 
+class VideoUsageSession(SQLModel, table=True):
+    """One row per issued join token — the unit of Daily.co cost accounting.
+
+    `reserved_minutes` is the worst-case participant-minutes this join could
+    cost (now -> room expiry). It is counted against the monthly budget the
+    moment a token is issued, so we can never exceed the cap even if usage
+    webhooks are lost. When Daily reports the participant left, the row is
+    `settled` with the real `actual_minutes`, freeing the unused reservation.
+    """
+
+    __tablename__ = "video_usage_session"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    workshop_id: UUID = Field(foreign_key="workshop.id", index=True)
+    user_id: UUID = Field(foreign_key="user.id", index=True)
+    reserved_minutes: int
+    actual_minutes: int | None = None
+    settled: bool = Field(default=False, index=True)
+    created_at: datetime = Field(default_factory=_utcnow_naive, index=True)
+    settled_at: datetime | None = None
+
+
 class RulesRead(BaseModel):
     force_camera_on: bool
     force_mic_muted_on_join: bool
@@ -79,3 +106,12 @@ class HostActionResponse(BaseModel):
     status: str
     action: HostActionType
     broadcast_sent: bool
+
+
+class VideoBudgetStatus(BaseModel):
+    used_minutes: int
+    cap_minutes: int
+    remaining_minutes: int
+    period_start: datetime  # first day of the current calendar month (UTC)
+    period_end: datetime  # first day of next month — when the budget resets
+    enforced: bool

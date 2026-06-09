@@ -52,6 +52,16 @@ class Settings(BaseSettings):
     daily_domain: str = ""  # e.g. "kalba.daily.co"
     daily_webhook_secret: str = ""
 
+    # Daily.co usage budget (cost guard).
+    # Daily bills per participant-minute and the free tier resets on the 1st of
+    # each calendar month (UTC). The free tier grants
+    # `daily_free_minutes_per_month` participant-minutes; we only ever spend up
+    # to `daily_usage_safety_ratio` of that within the current calendar month,
+    # so we never cross into paid usage.
+    daily_free_minutes_per_month: int = 10000
+    daily_usage_safety_ratio: float = 0.8  # spend at most 80% -> 8000 min/month
+    daily_budget_enforcement_enabled: bool = True  # kill-switch (off = log only)
+
     # Expo Push
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"
     expo_push_access_token: str = ""  # optional; required for production projects
@@ -69,6 +79,11 @@ class Settings(BaseSettings):
         "http://localhost:8081",
         "https://kalba.app",
     ]
+
+    @property
+    def daily_minute_budget(self) -> int:
+        """Hard cap on participant-minutes we will ever spend in the window."""
+        return int(self.daily_free_minutes_per_month * self.daily_usage_safety_ratio)
 
     @property
     def pg_url(self) -> str:
