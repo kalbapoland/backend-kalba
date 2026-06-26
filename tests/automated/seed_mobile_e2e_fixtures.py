@@ -80,6 +80,7 @@ async def _delete_fixture_rows(session: AsyncSession) -> None:
         TRAINER_EMAIL,
         USER_EMAIL,
         FULLER_EMAIL,
+        "e2e.register.smoke@kalba.dev",
         "e2e.trainer@kalba.local",
         "e2e.user@kalba.local",
         "e2e.fuller@kalba.local",
