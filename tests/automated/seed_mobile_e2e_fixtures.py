@@ -53,6 +53,7 @@ DISCOVER_GROUP_TITLE = "E2E Discover Group"
 WORKSHOP_FREE_TITLE = "E2E Workshop Free"
 WORKSHOP_FULL_TITLE = "E2E Workshop Full"
 WORKSHOP_TRAINER_TITLE = "E2E Workshop Trainer"
+WORKSHOP_PAST_TITLE = "E2E Workshop Past"
 
 LOCAL_DB_HOSTS = {"localhost", "127.0.0.1", "::1", "db"}
 
@@ -79,6 +80,7 @@ async def _delete_fixture_rows(session: AsyncSession) -> None:
         TRAINER_EMAIL,
         USER_EMAIL,
         FULLER_EMAIL,
+        "e2e.register.smoke@kalba.dev",
         "e2e.trainer@kalba.local",
         "e2e.user@kalba.local",
         "e2e.fuller@kalba.local",
@@ -352,6 +354,25 @@ async def seed_mobile_e2e_fixtures(force: bool, cleanup_only: bool) -> int:
                 max_participants=8,
             )
 
+            # User enrolled in workshop_free so My Kalba schedule is non-empty
+            session.add(WorkshopEnrollment(user_id=user.id, workshop_id=workshop_free.id))
+
+            # Past workshop with user enrollment so My Kalba stats show completed > 0.
+            # Using hours=2 (not days=5) so start_time stays in the current month even when
+            # the seed runs on the 1st–5th of the month (window shrinks to 2 h past midnight).
+            workshop_past = await _create_workshop(
+                session,
+                trainer_id=trainer.id,
+                group_id=trainer_group.id,
+                title=WORKSHOP_PAST_TITLE,
+                description="Completed workshop for My Kalba stats testing. #e2e #past",
+                start_time=now - timedelta(hours=2),
+                duration_minutes=60,
+                price=Decimal("0.00"),
+                max_participants=5,
+            )
+            session.add(WorkshopEnrollment(user_id=user.id, workshop_id=workshop_past.id))
+
             session.add(
                 WorkshopEnrollment(user_id=fuller.id, workshop_id=workshop_full.id)
             )
@@ -384,9 +405,10 @@ async def seed_mobile_e2e_fixtures(force: bool, cleanup_only: bool) -> int:
             print(f"  user:     {USER_EMAIL}")
             print(f"  group:    {TRAINER_GROUP_TITLE} (user already subscribed)")
             print(f"  group:    {DISCOVER_GROUP_TITLE} (discover flow)")
-            print(f"  workshop: {WORKSHOP_FREE_TITLE}")
-            print(f"  workshop: {WORKSHOP_FULL_TITLE}")
+            print(f"  workshop: {WORKSHOP_FREE_TITLE} (user enrolled)")
+            print(f"  workshop: {WORKSHOP_FULL_TITLE} (fuller enrolled, full)")
             print(f"  workshop: {WORKSHOP_TRAINER_TITLE}")
+            print(f"  workshop: {WORKSHOP_PAST_TITLE} (user enrolled, past — for stats)")
     finally:
         await engine.dispose()
 
