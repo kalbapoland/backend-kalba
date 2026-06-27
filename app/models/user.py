@@ -2,7 +2,7 @@ import enum
 from typing import Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import Column
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel
@@ -45,3 +45,19 @@ class UserRead(BaseModel):
     full_name: str
     is_active: bool
     role: UserRole
+
+
+class UserUpdate(BaseModel):
+    full_name: str | None = None
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str | None) -> str | None:
+        if v is None:
+            raise ValueError("full_name cannot be null; omit the field to leave it unchanged")
+        v = v.strip()
+        if not v:
+            raise ValueError("full_name cannot be empty")
+        if len(v) > 100:
+            raise ValueError("full_name cannot exceed 100 characters")
+        return v
