@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Literal
 from uuid import UUID
 
@@ -439,6 +439,13 @@ async def delete_workshop(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the workshop creator can delete this workshop",
+        )
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    if workshop.start_time <= now < workshop.start_time + timedelta(minutes=workshop.duration_minutes):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Workshop is currently in progress and cannot be deleted",
         )
 
     logger.info("Soft-deleting workshop %s (requested by %s)", workshop_id, user_id)

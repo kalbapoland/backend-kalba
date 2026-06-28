@@ -299,6 +299,28 @@ async def test_delete_workshop(client, trainer_token, workshop_payload):
     assert get_resp.status_code == 404
 
 
+async def test_delete_live_workshop_returns_409(
+    client, trainer_token, trainer, group, db_session
+):
+    now = datetime.now(UTC).replace(tzinfo=None)
+    workshop = Workshop(
+        trainer_id=trainer.id,
+        group_id=group.id,
+        title="Live Workshop",
+        start_time=now - timedelta(minutes=5),
+        duration_minutes=60,
+        max_participants=10,
+    )
+    db_session.add(workshop)
+    await db_session.commit()
+
+    resp = await client.delete(
+        f"/api/v1/workshops/{workshop.id}",
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 409
+
+
 # --- Date validation ---
 
 
