@@ -1,4 +1,29 @@
+import app.api.v1.workshops as _workshops_module
 from datetime import UTC, datetime, timedelta
+
+import pytest
+
+from app.services.notifications import DispatchResult, PushMessage
+
+
+@pytest.fixture
+def stub_push(monkeypatch):
+    """Prevent real Expo HTTP calls in workshop mutation tests."""
+    calls: list[dict] = []
+
+    async def fake_send(session, *, user_ids, message: PushMessage, **_kw):
+        calls.append(
+            {
+                "user_ids": list(user_ids),
+                "title": message.title,
+                "body": message.body,
+                "data": message.data,
+            }
+        )
+        return DispatchResult(sent=len(user_ids), invalidated=0, failed=0)
+
+    monkeypatch.setattr(_workshops_module, "send_push_to_users", fake_send)
+    return calls
 
 
 async def _create_workshop(client, trainer_token, payload):
@@ -111,3 +136,64 @@ async def test_my_kalba_reschedule_creates_notification(
     assert len(notifications) == 1
     assert notifications[0]["type"] == "workshop_rescheduled"
     assert workshop_id in notifications[0]["payload"]["workshop_id"]
+
+
+async def test_delete_workshop_creates_cancellation_notification(
+    client, trainer_token, user_token, group, regular_user, subscribe, stub_push
+):
+    workshop_id = await _create_workshop(
+        client,
+        trainer_token,
+        _workshop_payload(title="Cancelled Workshop", group_id=str(group.id)),
+    )
+    await subscribe(group, regular_user)
+
+    enroll_resp = await client.post(
+        f"/api/v1/workshops/{workshop_id}/enroll",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert enroll_resp.status_code == 200
+
+    delete_resp = await client.delete(
+        f"/api/v1/workshops/{workshop_id}",
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert delete_resp.status_code == 204
+
+    notif_resp = await client.get(
+        "/api/v1/users/me/my-kalba/notifications?unread_only=true",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert notif_resp.status_code == 200
+    notifications = notif_resp.json()
+    assert len(notifications) == 1
+    assert notifications[0]["type"] == "workshop_cancelled"
+    assert notifications[0]["payload"]["workshop_id"] == workshop_id
+
+    assert len(stub_push) == 1
+    assert stub_push[0]["data"] == {"workshop_id": workshop_id, "type": "cancelled"}
+    assert "Cancelled Workshop" in stub_push[0]["body"]
+
+
+async def test_delete_workshop_without_enrollments_creates_no_notification(
+    client, trainer_token, user_token, group, stub_push
+):
+    workshop_id = await _create_workshop(
+        client,
+        trainer_token,
+        _workshop_payload(title="Empty Workshop", group_id=str(group.id)),
+    )
+
+    delete_resp = await client.delete(
+        f"/api/v1/workshops/{workshop_id}",
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert delete_resp.status_code == 204
+
+    notif_resp = await client.get(
+        "/api/v1/users/me/my-kalba/notifications?unread_only=true",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert notif_resp.status_code == 200
+    assert notif_resp.json() == []
+    assert stub_push == []

@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from math import ceil
+from uuid import UUID
 
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -46,6 +47,35 @@ async def create_workshop_rescheduled_notifications(
     ]
     session.add_all(notifications)
     return len(notifications)
+
+
+async def create_workshop_cancelled_notifications(
+    session: AsyncSession,
+    *,
+    workshop: Workshop,
+) -> list[UUID]:
+    enrolled_ids = (
+        await session.exec(
+            select(WorkshopEnrollment.user_id).where(
+                WorkshopEnrollment.workshop_id == workshop.id
+            )
+        )
+    ).all()
+    if not enrolled_ids:
+        return []
+
+    notifications = [
+        UserNotification(
+            user_id=user_id,
+            type=UserNotificationType.WORKSHOP_CANCELLED,
+            title="Workshop cancelled",
+            body=f'"{workshop.title}" has been cancelled.',
+            payload={"workshop_id": str(workshop.id)},
+        )
+        for user_id in enrolled_ids
+    ]
+    session.add_all(notifications)
+    return list(enrolled_ids)
 
 
 async def create_workshop_reminder_notifications(
