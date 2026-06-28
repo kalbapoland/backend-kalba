@@ -26,6 +26,10 @@ class HostActionType(str, enum.Enum):
     UNMUTE_ALL = "unmute_all"
     CAMERAS_OFF_ALL = "cameras_off_all"
     CAMERAS_ON_ALL = "cameras_on_all"
+    # Targeted action: eject a single participant from the live call. Uses
+    # HostAction.target_user_id. Enforcement happens on the host's owner client
+    # (Daily updateParticipant eject); the backend authorizes + audits only.
+    REMOVE_PARTICIPANT = "remove_participant"
 
 
 class ParticipantRole(str, enum.Enum):
@@ -57,6 +61,10 @@ class WorkshopParticipant(SQLModel, table=True):
     workshop_id: UUID = Field(foreign_key="workshop.id", index=True)
     role: ParticipantRole = Field(default=ParticipantRole.PARTICIPANT)
     joined_at: datetime | None = None
+    # Set when the host removes this participant from the live call. Used to
+    # enforce a short re-join cooldown (see Settings.workshop_kick_cooldown_seconds)
+    # so a kicked user cannot immediately rejoin. Naive UTC, like joined_at.
+    kicked_at: datetime | None = None
 
 
 class VideoUsageSession(SQLModel, table=True):

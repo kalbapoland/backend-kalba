@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     daily_usage_safety_ratio: float = 0.8  # spend at most 80% -> 8000 min/month
     daily_budget_enforcement_enabled: bool = True  # kill-switch (off = log only)
 
+    # When the host removes a participant from a live call, that user cannot
+    # rejoin the same workshop for this many seconds — long enough for the
+    # trainer to act (e.g. remove them from the group) without an instant rejoin.
+    workshop_kick_cooldown_seconds: int = 60
+
     # Expo Push
     expo_push_url: str = "https://exp.host/--/api/v2/push/send"
     expo_push_access_token: str = ""  # optional; required for production projects
