@@ -7,7 +7,18 @@ Today it contains:
 1. deterministic reset/seed script for local Android/iOS E2E
 2. trainer-account bootstrap helper for smoke owner-flow tests
 
-Run locally from the backend root:
+Prerequisite: a migrated local PostgreSQL must be running. From the backend
+root:
+
+```bash
+docker compose -f docker-compose.local.yml up -d   # start Postgres
+uv run python -m alembic upgrade head               # run migrations
+```
+
+> Use `python -m alembic`, not bare `alembic` — the console script is not on
+> the path under `uv run`.
+
+Then run locally from the backend root:
 
 ```bash
 uv run python tests/automated/seed_mobile_e2e_fixtures.py

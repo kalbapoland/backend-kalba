@@ -48,16 +48,16 @@ app/
 
 ```bash
 docker compose -f docker-compose.local.yml up -d   # start Postgres
-uv run alembic upgrade head                         # run migrations
+uv run python -m alembic upgrade head               # run migrations
 uv run uvicorn app.main:app --reload --port 8000    # start server
 ```
 
 ### Migrations
 
 ```bash
-uv run alembic revision --autogenerate -m "description"   # create migration
-uv run alembic upgrade head                               # apply
-uv run alembic downgrade -1                               # rollback one
+uv run python -m alembic revision --autogenerate -m "description"   # create migration
+uv run python -m alembic upgrade head                               # apply
+uv run python -m alembic downgrade -1                               # rollback one
 ```
 
 ### Tests
