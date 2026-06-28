@@ -78,6 +78,32 @@ async def join_workshop(
         if now > latest_join:
             raise HTTPException(status_code=403, detail="Workshop has ended")
 
+        # 3.1. Re-join cooldown: a participant removed by the host cannot rejoin
+        # for a short window (gives the trainer time to act). Checked before the
+        # budget reservation so a blocked join never consumes participant-minutes.
+        cooldown = settings.workshop_kick_cooldown_seconds
+        if cooldown > 0:
+            kicked_stmt = select(WorkshopParticipant.kicked_at).where(
+                WorkshopParticipant.workshop_id == workshop_id,
+                WorkshopParticipant.user_id == user_id,
+            )
+            kicked_at = (await session.exec(kicked_stmt)).first()
+            if kicked_at is not None:
+                elapsed = (now - kicked_at).total_seconds()
+                if elapsed < cooldown:
+                    retry_after = int(cooldown - elapsed) + 1
+                    logger.info(
+                        "Join blocked by kick cooldown (workshop=%s, user=%s, retry_after=%ss)",
+                        workshop_id,
+                        user_id,
+                        retry_after,
+                    )
+                    raise HTTPException(
+                        status_code=403,
+                        detail="You were removed from this call. Please wait a moment before rejoining.",
+                        headers={"Retry-After": str(retry_after)},
+                    )
+
     # 3.5. Daily.co budget gate — never cross from the free tier into paid
     # usage. Reserve this join's worst-case participant-minutes up front; if it
     # would exceed the cap, refuse the token (applies to host and participants).
@@ -125,6 +151,8 @@ async def join_workshop(
         session.add(participant)
     else:
         existing.joined_at = now
+        # Cooldown has passed (we got here), so clear the kick marker.
+        existing.kicked_at = None
         session.add(existing)
 
     await session.commit()
@@ -356,6 +384,48 @@ async def host_action(
     if user_id != workshop.trainer_id:
         raise HTTPException(
             status_code=403, detail="Only the host can perform this action"
+        )
+
+    # Targeted removal: authorize, record the kick, and audit. The actual
+    # ejection is performed by the host's owner client (Daily updateParticipant
+    # eject) — Daily has no server-side eject — so we don't broadcast here. We do
+    # stamp kicked_at so join_workshop can enforce a short re-join cooldown.
+    if body.action == HostActionType.REMOVE_PARTICIPANT:
+        if body.target_user_id is None:
+            raise HTTPException(
+                status_code=422, detail="target_user_id is required to remove a participant"
+            )
+        if body.target_user_id == workshop.trainer_id:
+            raise HTTPException(
+                status_code=400, detail="Host cannot remove themselves"
+            )
+
+        now = datetime.now(UTC).replace(tzinfo=None)
+        target_stmt = select(WorkshopParticipant).where(
+            WorkshopParticipant.workshop_id == workshop_id,
+            WorkshopParticipant.user_id == body.target_user_id,
+        )
+        target = (await session.exec(target_stmt)).first()
+        if target is None:
+            target = WorkshopParticipant(
+                user_id=body.target_user_id,
+                workshop_id=workshop_id,
+                role=ParticipantRole.PARTICIPANT,
+            )
+        target.kicked_at = now
+        session.add(target)
+        await session.commit()
+
+        logger.info(
+            "Host removed participant (workshop=%s, host=%s, target=%s)",
+            workshop_id,
+            user_id,
+            body.target_user_id,
+        )
+        return HostActionResponse(
+            status="accepted",
+            action=body.action,
+            broadcast_sent=False,
         )
 
     # Load or create rules
