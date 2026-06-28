@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.models.group import Group, GroupMembership
 from app.models.my_kalba import UserNotification, UserNotificationType
 from app.models.workshop import Workshop, WorkshopEnrollment
 
@@ -76,6 +77,33 @@ async def create_workshop_cancelled_notifications(
     ]
     session.add_all(notifications)
     return list(enrolled_ids)
+
+
+async def create_group_deleted_notifications(
+    session: AsyncSession,
+    *,
+    group: Group,
+) -> list[UUID]:
+    member_ids = (
+        await session.exec(
+            select(GroupMembership.user_id).where(GroupMembership.group_id == group.id)
+        )
+    ).all()
+    if not member_ids:
+        return []
+
+    notifications = [
+        UserNotification(
+            user_id=user_id,
+            type=UserNotificationType.GROUP_DELETED,
+            title="Group deleted",
+            body=f'"{group.title}" has been deleted.',
+            payload={"group_id": str(group.id)},
+        )
+        for user_id in member_ids
+    ]
+    session.add_all(notifications)
+    return list(member_ids)
 
 
 async def create_workshop_reminder_notifications(

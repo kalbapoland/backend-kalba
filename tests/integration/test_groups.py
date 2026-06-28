@@ -2,9 +2,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+import app.api.v1.groups as _groups_module
 from app.core.security import create_access_token
 from app.models.group import Group
 from app.models.user import User, UserRole
+from app.services.notifications import DispatchResult, PushMessage
 
 
 @pytest.fixture
@@ -204,6 +206,129 @@ async def test_delete_group_non_owner_forbidden(
         headers={"Authorization": f"Bearer {user_token}"},
     )
     assert resp.status_code == 403
+
+
+@pytest.fixture
+def stub_push(monkeypatch):
+    """Prevent real Expo HTTP calls; capture payloads for assertion."""
+    calls: list[dict] = []
+
+    async def fake_send(session, *, user_ids, message: PushMessage, **_kw):
+        calls.append(
+            {
+                "user_ids": list(user_ids),
+                "title": message.title,
+                "body": message.body,
+                "data": message.data,
+            }
+        )
+        return DispatchResult(sent=len(user_ids), invalidated=0, failed=0)
+
+    monkeypatch.setattr(_groups_module, "send_push_to_users", fake_send)
+    return calls
+
+
+async def test_delete_group_notifies_subscribers(
+    client, trainer_token, user_token, group_payload, regular_user, stub_push
+):
+    group = await _create_group(client, trainer_token, group_payload)
+    user_headers = {"Authorization": f"Bearer {user_token}"}
+    await client.post(f"/api/v1/groups/{group['id']}/subscribe", headers=user_headers)
+
+    resp = await client.delete(
+        f"/api/v1/groups/{group['id']}",
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 204
+
+    notif_resp = await client.get(
+        "/api/v1/users/me/my-kalba/notifications?unread_only=true",
+        headers=user_headers,
+    )
+    assert notif_resp.status_code == 200
+    notifications = notif_resp.json()
+    assert len(notifications) == 1
+    assert notifications[0]["type"] == "group_deleted"
+    assert notifications[0]["payload"]["group_id"] == group["id"]
+
+    assert len(stub_push) == 1
+    assert stub_push[0]["data"] == {"group_id": group["id"], "type": "deleted"}
+    assert group_payload["title"] in stub_push[0]["body"]
+
+
+async def test_delete_group_without_subscribers_creates_no_notification(
+    client, trainer_token, user_token, group_payload, stub_push
+):
+    group = await _create_group(client, trainer_token, group_payload)
+
+    resp = await client.delete(
+        f"/api/v1/groups/{group['id']}",
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 204
+
+    notif_resp = await client.get(
+        "/api/v1/users/me/my-kalba/notifications?unread_only=true",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert notif_resp.status_code == 200
+    assert notif_resp.json() == []
+    assert stub_push == []
+
+
+async def test_delete_group_cascades_workshops(
+    client, trainer_token, user_token, group, regular_user, subscribe, stub_push
+):
+    """Deleting a group soft-deletes its workshops and notifies enrolled users."""
+    trainer_headers = {"Authorization": f"Bearer {trainer_token}"}
+    user_headers = {"Authorization": f"Bearer {user_token}"}
+
+    await subscribe(group, regular_user)
+
+    workshop_resp = await client.post(
+        "/api/v1/workshops/",
+        json={
+            "title": "Cascade Workshop",
+            "description": "",
+            "start_time": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
+            "duration_minutes": 60,
+            "price": "0.00",
+            "max_participants": 10,
+            "group_id": str(group.id),
+        },
+        headers=trainer_headers,
+    )
+    assert workshop_resp.status_code == 201
+    workshop_id = workshop_resp.json()["id"]
+
+    enroll_resp = await client.post(
+        f"/api/v1/workshops/{workshop_id}/enroll",
+        headers=user_headers,
+    )
+    assert enroll_resp.status_code == 200
+
+    del_resp = await client.delete(
+        f"/api/v1/groups/{group.id}",
+        headers=trainer_headers,
+    )
+    assert del_resp.status_code == 204
+
+    # Workshop should be gone.
+    assert (await client.get(f"/api/v1/workshops/{workshop_id}")).status_code == 404
+
+    # User should have both workshop_cancelled and group_deleted in-app notifications.
+    notif_resp = await client.get(
+        "/api/v1/users/me/my-kalba/notifications?unread_only=true",
+        headers=user_headers,
+    )
+    assert notif_resp.status_code == 200
+    notif_types = {n["type"] for n in notif_resp.json()}
+    assert "workshop_cancelled" in notif_types
+    assert "group_deleted" in notif_types
+
+    # Push goes out only for group deletion (not per-workshop on cascade).
+    assert len(stub_push) == 1
+    assert stub_push[0]["data"]["type"] == "deleted"
 
 
 # --- subscribe / unsubscribe ---

@@ -21,6 +21,12 @@ from app.models.group import (
 )
 from app.models.user import User, UserRole
 from app.models.workshop import Workshop, WorkshopRead
+from app.services.daily import DailyService, DailyServiceError, get_daily_service
+from app.services.my_kalba_notifications import (
+    create_group_deleted_notifications,
+    create_workshop_cancelled_notifications,
+)
+from app.services.notifications import PushMessage, send_push_to_users
 
 logger = logging.getLogger(__name__)
 
@@ -189,18 +195,71 @@ async def delete_group(
     group_id: UUID,
     user_id: UUID = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db_session),
+    daily: DailyService = Depends(get_daily_service),
 ):
-    """Soft-delete a group. Only the owner may delete."""
+    """Soft-delete a group and cascade to its workshops. Only the owner may delete."""
     group = await _get_group_or_404(session, group_id)
     if group.trainer_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the group owner can delete this group",
         )
-    group.deleted_at = datetime.now(UTC).replace(tzinfo=None)
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    # Cascade: soft-delete every non-deleted workshop in this group and notify
+    # enrolled users. Daily.co room cleanup is best-effort — failures are logged
+    # but do not abort the group deletion.
+    workshops = list(
+        (
+            await session.exec(
+                select(Workshop).where(
+                    Workshop.group_id == group_id,
+                    Workshop.deleted_at.is_(None),
+                )
+            )
+        ).all()
+    )
+    for workshop in workshops:
+        workshop.deleted_at = now
+        await create_workshop_cancelled_notifications(session, workshop=workshop)
+        if workshop.video_room_id:
+            try:
+                await daily.delete_room(workshop.video_room_id)
+            except DailyServiceError as exc:
+                logger.warning(
+                    "Daily room cleanup failed for workshop %s during group %s deletion: %s",
+                    workshop.id,
+                    group_id,
+                    exc.detail,
+                )
+
+    group.deleted_at = now
+    member_ids = await create_group_deleted_notifications(session, group=group)
+    session.add_all(workshops)
     session.add(group)
     await session.commit()
-    logger.info("Group %s soft-deleted by %s", group_id, user_id)
+    logger.info(
+        "Group %s soft-deleted by %s; %d workshops cascaded, %d member notifications created",
+        group_id,
+        user_id,
+        len(workshops),
+        len(member_ids),
+    )
+
+    if member_ids:
+        try:
+            await send_push_to_users(
+                session,
+                user_ids=member_ids,
+                message=PushMessage(
+                    title="Group deleted",
+                    body=f'"{group.title}" has been deleted.',
+                    data={"group_id": str(group_id), "type": "deleted"},
+                ),
+            )
+        except Exception:
+            logger.exception("Push dispatch failed for deleted group %s", group_id)
 
 
 @router.post("/{group_id}/subscribe", response_model=GroupRead)
