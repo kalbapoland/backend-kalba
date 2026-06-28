@@ -26,6 +26,7 @@ class UserNotificationType(str, enum.Enum):
     WORKSHOP_RESCHEDULED = "workshop_rescheduled"
     WORKSHOP_REMINDER = "workshop_reminder"
     WORKSHOP_CANCELLED = "workshop_cancelled"
+    GROUP_DELETED = "group_deleted"
 
 
 USER_NOTIFICATION_TYPE_ENUM = sa.Enum(
