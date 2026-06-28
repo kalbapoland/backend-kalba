@@ -25,6 +25,7 @@ class UserGoal(SQLModel, table=True):
 class UserNotificationType(str, enum.Enum):
     WORKSHOP_RESCHEDULED = "workshop_rescheduled"
     WORKSHOP_REMINDER = "workshop_reminder"
+    WORKSHOP_CANCELLED = "workshop_cancelled"
 
 
 USER_NOTIFICATION_TYPE_ENUM = sa.Enum(

@@ -26,8 +26,10 @@ from app.models.workshop import (
 from app.services.daily import DailyService, DailyServiceError, get_daily_service
 from app.services.hashtags import set_workshop_tags
 from app.services.my_kalba_notifications import (
+    create_workshop_cancelled_notifications,
     create_workshop_rescheduled_notifications,
 )
+from app.services.notifications import PushMessage, send_push_to_users
 
 logger = logging.getLogger(__name__)
 
@@ -457,9 +459,30 @@ async def delete_workshop(
             ) from exc
 
     workshop.deleted_at = datetime.now(UTC).replace(tzinfo=None)
+
+    enrolled_ids = await create_workshop_cancelled_notifications(session, workshop=workshop)
+
     session.add(workshop)
     await session.commit()
-    logger.info("Workshop %s soft-deleted", workshop_id)
+    logger.info(
+        "Workshop %s soft-deleted; %d cancellation notifications created",
+        workshop_id,
+        len(enrolled_ids),
+    )
+
+    if enrolled_ids:
+        try:
+            await send_push_to_users(
+                session,
+                user_ids=enrolled_ids,
+                message=PushMessage(
+                    title="Workshop cancelled",
+                    body=f'"{workshop.title}" has been cancelled.',
+                    data={"workshop_id": str(workshop_id), "type": "cancelled"},
+                ),
+            )
+        except Exception:
+            logger.exception("Push dispatch failed for cancelled workshop %s", workshop_id)
 
 
 @router.post(
