@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.core.errors import ErrorCode
 from app.core.rate_limit import enforce_push_token_rate_limit
 from app.core.security import get_current_user_id
 from app.db import get_db_session
@@ -43,7 +44,7 @@ async def register(
         logger.exception("Push token register failed for user %s", user_id, exc_info=exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Push token registration is temporarily unavailable",
+            detail=ErrorCode.PUSH_TOKEN_SERVICE_UNAVAILABLE,
         )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -72,6 +73,6 @@ async def unregister(
         logger.exception("Push token unregister failed for user %s", user_id, exc_info=exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Push token unregister is temporarily unavailable",
+            detail=ErrorCode.PUSH_TOKEN_SERVICE_UNAVAILABLE,
         )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -123,7 +123,7 @@ async def test_enroll_full_workshop_returns_409(
         headers={"Authorization": f"Bearer {other_token}"},
     )
     assert resp.status_code == 409
-    assert "full" in resp.json()["detail"].lower()
+    assert resp.json()["detail"] == "WORKSHOP_FULL"
 
 
 async def test_enroll_requires_group_membership(

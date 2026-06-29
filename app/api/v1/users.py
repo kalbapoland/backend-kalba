@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.core.errors import ErrorCode
 from app.core.security import get_current_user_id
 from app.db import get_db_session
 from app.models.user import User, UserRead, UserUpdate
@@ -24,7 +25,7 @@ async def get_me(
     user = await session.get(User, user_id)
     if user is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail=ErrorCode.USER_NOT_FOUND
         )
     logger.info("Returning profile for user %s", user_id)
     return user
@@ -40,7 +41,7 @@ async def update_me(
     user = await session.get(User, user_id)
     if user is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail=ErrorCode.USER_NOT_FOUND
         )
 
     update_data = body.model_dump(exclude_unset=True)
@@ -67,7 +68,7 @@ async def delete_me(
     user = await session.get(User, user_id)
     if user is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail=ErrorCode.USER_NOT_FOUND
         )
 
     await delete_user_account(user_id, session)

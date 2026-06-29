@@ -125,7 +125,7 @@ async def test_verify_google_token_rejects_unknown_audience(monkeypatch):
         await security_module.verify_google_id_token("fake-id-token", settings)
 
     assert exc.value.status_code == 401
-    assert exc.value.detail == "Token was not issued for this application"
+    assert exc.value.detail == "GOOGLE_TOKEN_WRONG_AUDIENCE"
 
 
 @pytest.mark.asyncio
@@ -143,7 +143,7 @@ async def test_verify_google_token_rejects_non_200_response(monkeypatch):
         await security_module.verify_google_id_token("bad-token", settings)
 
     assert exc.value.status_code == 401
-    assert exc.value.detail == "Invalid Google ID token"
+    assert exc.value.detail == "GOOGLE_TOKEN_INVALID"
 
 
 @pytest.mark.asyncio

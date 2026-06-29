@@ -88,7 +88,7 @@ async def test_create_workshop_with_invalid_year_is_rejected(
         headers={"Authorization": f"Bearer {trainer_token}"},
     )
     assert resp.status_code == 422
-    assert "Workshop year must be between" in resp.json()["detail"]
+    assert resp.json()["detail"] == "WORKSHOP_INVALID_START_TIME"
 
 
 async def test_create_workshop_with_past_date_is_rejected(
@@ -197,7 +197,7 @@ async def test_update_workshop_with_invalid_year_is_rejected(
         headers={"Authorization": f"Bearer {trainer_token}"},
     )
     assert resp.status_code == 422
-    assert "Workshop year must be between" in resp.json()["detail"]
+    assert resp.json()["detail"] == "WORKSHOP_INVALID_START_TIME"
 
 
 async def test_update_workshop_with_past_date_is_rejected(

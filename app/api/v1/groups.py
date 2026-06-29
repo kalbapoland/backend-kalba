@@ -9,6 +9,7 @@ from sqlmodel import func, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.v1.workshops import _serialize_workshops
+from app.core.errors import ErrorCode
 from app.core.security import get_current_user_id, get_optional_user_id
 from app.db import get_db_session
 from app.models.group import (
@@ -77,7 +78,7 @@ async def _serialize_groups(
 async def _get_group_or_404(session: AsyncSession, group_id: UUID) -> Group:
     group = await session.get(Group, group_id)
     if group is None or group.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Group not found")
+        raise HTTPException(status_code=404, detail=ErrorCode.GROUP_NOT_FOUND)
     return group
 
 
@@ -147,7 +148,7 @@ async def create_group(
     if user is None or user.role != UserRole.TRAINER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only trainers can create groups",
+            detail=ErrorCode.TRAINER_REQUIRED,
         )
 
     group = Group(
@@ -174,7 +175,7 @@ async def update_group(
     if group.trainer_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the group owner can edit this group",
+            detail=ErrorCode.GROUP_NOT_OWNER,
         )
 
     update_data = body.model_dump(exclude_unset=True)
@@ -202,7 +203,7 @@ async def delete_group(
     if group.trainer_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the group owner can delete this group",
+            detail=ErrorCode.GROUP_NOT_OWNER,
         )
 
     now = datetime.now(UTC).replace(tzinfo=None)
@@ -228,7 +229,7 @@ async def delete_group(
     if live:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot delete group while a workshop is in progress",
+            detail=ErrorCode.GROUP_HAS_LIVE_WORKSHOP,
         )
 
     for workshop in workshops:
@@ -284,7 +285,7 @@ async def subscribe_group(
     if group.trainer_id == user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You cannot subscribe to your own group",
+            detail=ErrorCode.GROUP_SUBSCRIBE_OWN,
         )
 
     user = await session.get(User, user_id)
@@ -373,7 +374,7 @@ async def remove_group_member(
     if group.trainer_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the group owner can remove members",
+            detail=ErrorCode.GROUP_NOT_OWNER,
         )
     membership = (
         await session.exec(
@@ -409,7 +410,7 @@ async def list_group_workshops(
         if membership is None:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Join the group to see its workshops",
+                detail=ErrorCode.GROUP_NOT_MEMBER,
             )
     statement = (
         select(Workshop)

@@ -138,7 +138,7 @@ async def test_kicked_participant_cannot_immediately_rejoin(
         _clear_overrides()
 
     assert resp.status_code == 403, resp.text
-    assert "removed" in resp.json()["detail"].lower()
+    assert resp.json()["detail"] == "PARTICIPANT_KICKED"
     assert resp.headers.get("Retry-After") is not None
 
 

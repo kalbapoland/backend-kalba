@@ -8,6 +8,7 @@ from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.core.errors import ErrorCode
 from app.core.security import get_current_user_id
 from app.db import get_db_session
 from app.models.user import User
@@ -42,7 +43,7 @@ async def _get_active_workshop_or_404(
 ) -> Workshop:
     workshop = await session.get(Workshop, workshop_id)
     if workshop is None or workshop.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Workshop not found")
+        raise HTTPException(status_code=404, detail=ErrorCode.WORKSHOP_NOT_FOUND)
     return workshop
 
 
@@ -74,9 +75,9 @@ async def join_workshop(
             minutes=workshop.duration_minutes + 10
         )
         if now < earliest_join:
-            raise HTTPException(status_code=403, detail="Workshop has not started yet")
+            raise HTTPException(status_code=403, detail=ErrorCode.WORKSHOP_NOT_STARTED)
         if now > latest_join:
-            raise HTTPException(status_code=403, detail="Workshop has ended")
+            raise HTTPException(status_code=403, detail=ErrorCode.WORKSHOP_ENDED)
 
         # 3.1. Re-join cooldown: a participant removed by the host cannot rejoin
         # for a short window (gives the trainer time to act). Checked before the
@@ -100,7 +101,7 @@ async def join_workshop(
                     )
                     raise HTTPException(
                         status_code=403,
-                        detail="You were removed from this call. Please wait a moment before rejoining.",
+                        detail=ErrorCode.PARTICIPANT_KICKED,
                         headers={"Retry-After": str(retry_after)},
                     )
 
@@ -119,7 +120,7 @@ async def join_workshop(
         )
         raise HTTPException(
             status_code=503,
-            detail="Video is temporarily unavailable due to monthly usage limits. Please try again later.",
+            detail=ErrorCode.VIDEO_USAGE_LIMIT,
         )
 
     # 4/5. Capacity check + participant upsert.
@@ -134,7 +135,7 @@ async def join_workshop(
         )
         count = (await session.exec(count_stmt)).one()
         if count >= workshop.max_participants:
-            raise HTTPException(status_code=403, detail="Workshop is full")
+            raise HTTPException(status_code=403, detail=ErrorCode.WORKSHOP_FULL)
 
     existing_stmt = select(WorkshopParticipant).where(
         WorkshopParticipant.user_id == user_id,
@@ -171,7 +172,7 @@ async def join_workshop(
             logger.error("Failed to create Daily room on join: %s", exc.detail)
             if reservation.created_new and reservation.reservation_id:
                 await release_reservation(session, reservation.reservation_id)
-            raise HTTPException(status_code=502, detail="Video service unavailable")
+            raise HTTPException(status_code=502, detail=ErrorCode.VIDEO_SERVICE_UNAVAILABLE)
 
         workshop.video_room_id = room_name
         session.add(workshop)
@@ -206,7 +207,7 @@ async def join_workshop(
         logger.error("Failed to create meeting token: %s", exc.detail)
         if reservation.created_new and reservation.reservation_id:
             await release_reservation(session, reservation.reservation_id)
-        raise HTTPException(status_code=502, detail="Video service unavailable")
+        raise HTTPException(status_code=502, detail=ErrorCode.VIDEO_SERVICE_UNAVAILABLE)
 
     room_url = f"https://{settings.daily_domain}/{workshop.video_room_id}"
 
@@ -254,7 +255,7 @@ async def daily_webhook(
 
     if not settings.daily_webhook_secret:
         logger.error("Daily webhook secret is not configured")
-        raise HTTPException(status_code=503, detail="Webhook not configured")
+        raise HTTPException(status_code=503, detail=ErrorCode.WEBHOOK_NOT_CONFIGURED)
 
     signature = request.headers.get("x-webhook-signature", "")
     timestamp = request.headers.get("x-webhook-timestamp", "")
@@ -269,7 +270,7 @@ async def daily_webhook(
 
     if not is_valid_signature:
         logger.warning("Rejected Daily webhook due to invalid signature")
-        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+        raise HTTPException(status_code=401, detail=ErrorCode.WEBHOOK_SIGNATURE_INVALID)
 
     logger.info("Daily webhook signature verified")
 
@@ -343,7 +344,7 @@ async def get_workshop_rules(
     )
     workshop = await session.get(Workshop, workshop_id)
     if workshop is None or workshop.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Workshop not found")
+        raise HTTPException(status_code=404, detail=ErrorCode.WORKSHOP_NOT_FOUND)
 
     rules_stmt = select(WorkshopRules).where(WorkshopRules.workshop_id == workshop_id)
     rules_row = (await session.exec(rules_stmt)).first()
@@ -383,7 +384,7 @@ async def host_action(
     workshop = await _get_active_workshop_or_404(session, workshop_id)
     if user_id != workshop.trainer_id:
         raise HTTPException(
-            status_code=403, detail="Only the host can perform this action"
+            status_code=403, detail=ErrorCode.HOST_ACTION_FORBIDDEN
         )
 
     # Targeted removal: authorize, record the kick, and audit. The actual
@@ -393,11 +394,11 @@ async def host_action(
     if body.action == HostActionType.REMOVE_PARTICIPANT:
         if body.target_user_id is None:
             raise HTTPException(
-                status_code=422, detail="target_user_id is required to remove a participant"
+                status_code=422, detail=ErrorCode.HOST_ACTION_MISSING_TARGET
             )
         if body.target_user_id == workshop.trainer_id:
             raise HTTPException(
-                status_code=400, detail="Host cannot remove themselves"
+                status_code=400, detail=ErrorCode.HOST_ACTION_SELF_REMOVE
             )
 
         now = datetime.now(UTC).replace(tzinfo=None)
