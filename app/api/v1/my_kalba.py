@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.core.errors import ErrorCode
 from app.core.security import get_current_user_id
 from app.db import get_db_session
 from app.models.my_kalba import (
@@ -266,9 +267,9 @@ async def update_notification_read_state(
 ):
     notification = await session.get(UserNotification, notification_id)
     if notification is None or notification.deleted_at is not None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ErrorCode.NOTIFICATION_NOT_FOUND)
     if notification.user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ErrorCode.FORBIDDEN)
 
     notification.is_read = body.is_read
     notification.read_at = _utc_now_naive() if body.is_read else None
@@ -317,9 +318,9 @@ async def delete_notification(
 ):
     notification = await session.get(UserNotification, notification_id)
     if notification is None or notification.deleted_at is not None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ErrorCode.NOTIFICATION_NOT_FOUND)
     if notification.user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ErrorCode.FORBIDDEN)
 
     notification.deleted_at = _utc_now_naive()
     session.add(notification)

@@ -11,6 +11,7 @@ from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import get_settings
+from app.core.errors import ErrorCode
 from app.core.security import get_current_user_id, get_optional_user_id
 from app.db import get_db_session
 from app.models.group import Group, GroupMembership
@@ -108,11 +109,11 @@ async def _validate_group_ownership(
     not be deleted, and be owned by the requesting trainer."""
     group = await session.get(Group, group_id)
     if group is None or group.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Group not found")
+        raise HTTPException(status_code=404, detail=ErrorCode.GROUP_NOT_FOUND)
     if group.trainer_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only attach workshops to a group you own",
+            detail=ErrorCode.WORKSHOP_GROUP_NOT_OWNED,
         )
 
 
@@ -196,7 +197,7 @@ async def list_my_workshops(
     if from_ is not None and to is not None and from_ > to:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="`from` must be <= `to`",
+            detail=ErrorCode.INVALID_DATE_RANGE,
         )
 
     conditions = []
@@ -244,13 +245,13 @@ async def get_workshop(
     result = await session.exec(statement)
     workshop = result.first()
     if workshop is None or workshop.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Workshop not found")
+        raise HTTPException(status_code=404, detail=ErrorCode.WORKSHOP_NOT_FOUND)
 
     # Only members (or the owner) of the workshop's group may view it. Return
     # 404 rather than 403 so a non-member can't even confirm it exists.
     group_ids = await _caller_group_ids(session, caller_id)
     if workshop.group_id not in group_ids:
-        raise HTTPException(status_code=404, detail="Workshop not found")
+        raise HTTPException(status_code=404, detail=ErrorCode.WORKSHOP_NOT_FOUND)
 
     logger.info("Workshop %s retrieved", workshop_id)
     return (await _serialize_workshops(session, [workshop], caller_id))[0]
@@ -270,13 +271,13 @@ async def create_workshop(
     if user is None or user.role != UserRole.TRAINER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only trainers can create workshops",
+            detail=ErrorCode.TRAINER_REQUIRED,
         )
 
     try:
         start_time = normalize_to_utc_naive(body.start_time)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=ErrorCode.WORKSHOP_INVALID_START_TIME) from exc
 
     await _validate_group_ownership(session, body.group_id, user_id)
 
@@ -350,12 +351,12 @@ async def update_workshop(
     )
     workshop = (await session.exec(statement)).first()
     if workshop is None or workshop.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Workshop not found")
+        raise HTTPException(status_code=404, detail=ErrorCode.WORKSHOP_NOT_FOUND)
 
     if workshop.trainer_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the workshop creator can edit this workshop",
+            detail=ErrorCode.WORKSHOP_NOT_OWNER,
         )
 
     update_data = body.model_dump(exclude_unset=True)
@@ -366,7 +367,7 @@ async def update_workshop(
         try:
             update_data["start_time"] = normalize_to_utc_naive(st)
         except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            raise HTTPException(status_code=422, detail=ErrorCode.WORKSHOP_INVALID_START_TIME) from exc
 
     # Re-arm the reminder if the schedule moves or the lead time changes —
     # the previous "sent" marker no longer reflects user intent.
@@ -433,19 +434,19 @@ async def delete_workshop(
     """Delete a workshop. Only the trainer who created it may delete it."""
     workshop = await session.get(Workshop, workshop_id)
     if workshop is None or workshop.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Workshop not found")
+        raise HTTPException(status_code=404, detail=ErrorCode.WORKSHOP_NOT_FOUND)
 
     if workshop.trainer_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the workshop creator can delete this workshop",
+            detail=ErrorCode.WORKSHOP_NOT_OWNER,
         )
 
     now = datetime.now(UTC).replace(tzinfo=None)
     if workshop.start_time <= now < workshop.start_time + timedelta(minutes=workshop.duration_minutes):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Workshop is currently in progress and cannot be deleted",
+            detail=ErrorCode.WORKSHOP_LIVE,
         )
 
     logger.info("Soft-deleting workshop %s (requested by %s)", workshop_id, user_id)
@@ -462,7 +463,7 @@ async def delete_workshop(
             )
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Video service unavailable",
+                detail=ErrorCode.VIDEO_SERVICE_UNAVAILABLE,
             ) from exc
 
     workshop.deleted_at = datetime.now(UTC).replace(tzinfo=None)
@@ -519,12 +520,12 @@ async def enroll_workshop(
     )
     workshop = (await session.exec(statement)).first()
     if workshop is None or workshop.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Workshop not found")
+        raise HTTPException(status_code=404, detail=ErrorCode.WORKSHOP_NOT_FOUND)
 
     if workshop.trainer_id == user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Trainers cannot enroll in their own workshop",
+            detail=ErrorCode.WORKSHOP_ENROLL_OWN,
         )
 
     # Only members of the workshop's group may enroll.
@@ -539,7 +540,7 @@ async def enroll_workshop(
     if is_member is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You must join the group to enroll in its workshops",
+            detail=ErrorCode.WORKSHOP_ENROLL_NOT_MEMBER,
         )
 
     # Compare in UTC-naive form (storage convention) — start_time has no tzinfo.
@@ -547,7 +548,7 @@ async def enroll_workshop(
     if workshop.start_time <= now_naive:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Workshop has already started",
+            detail=ErrorCode.WORKSHOP_ALREADY_STARTED,
         )
 
     existing = (
@@ -570,7 +571,7 @@ async def enroll_workshop(
         if count >= workshop.max_participants:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Workshop is full",
+                detail=ErrorCode.WORKSHOP_FULL,
             )
 
         enrollment = WorkshopEnrollment(user_id=user_id, workshop_id=workshop_id)

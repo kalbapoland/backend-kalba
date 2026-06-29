@@ -9,6 +9,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.core.errors import ErrorCode
 from app.core.rate_limit import (
     enforce_google_auth_rate_limit,
     enforce_password_reset_rate_limit,
@@ -92,7 +93,7 @@ async def register_auth(
     if existing_user is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="User already exists",
+            detail=ErrorCode.USER_ALREADY_EXISTS,
         )
 
     user = User(
@@ -108,7 +109,7 @@ async def register_auth(
         await db_session.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="User already exists",
+            detail=ErrorCode.USER_ALREADY_EXISTS,
         )
 
     await db_session.refresh(user)
@@ -131,7 +132,7 @@ async def login_auth(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
+            detail=ErrorCode.INVALID_CREDENTIALS,
         )
 
     return await _issue_auth_response(user.id, db_session, settings)
@@ -222,14 +223,14 @@ async def reset_password(
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This reset link is invalid or has expired.",
+            detail=ErrorCode.PASSWORD_RESET_TOKEN_INVALID,
         )
 
     user = await db_session.get(User, token_row.user_id)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This reset link is invalid or has expired.",
+            detail=ErrorCode.PASSWORD_RESET_TOKEN_INVALID,
         )
 
     user.hashed_password = hash_password(body.password)
@@ -292,7 +293,7 @@ async def google_auth(
     if user is not None and user.google_id not in (None, google_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Account already linked to another Google identity",
+            detail=ErrorCode.GOOGLE_ACCOUNT_CONFLICT,
         )
 
     if user is None:
@@ -339,14 +340,14 @@ async def refresh_auth_token(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token",
+            detail=ErrorCode.TOKEN_REFRESH_INVALID,
         )
 
     user = await db_session.get(User, user_id)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token",
+            detail=ErrorCode.TOKEN_REFRESH_INVALID,
         )
 
     token_row.revoked_at = now

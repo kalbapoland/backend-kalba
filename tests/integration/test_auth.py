@@ -87,7 +87,7 @@ async def test_register_rejects_existing_user(client, db_session):
     )
 
     assert resp.status_code == 409
-    assert resp.json()["detail"] == "User already exists"
+    assert resp.json()["detail"] == "USER_ALREADY_EXISTS"
 
 
 @pytest.mark.asyncio
@@ -143,7 +143,7 @@ async def test_login_rejects_invalid_credentials(client, db_session):
     )
 
     assert resp.status_code == 401
-    assert resp.json()["detail"] == "Invalid credentials"
+    assert resp.json()["detail"] == "INVALID_CREDENTIALS"
 
 
 @pytest.mark.asyncio
@@ -380,7 +380,7 @@ async def test_google_auth_rejects_email_collision_with_other_google_id(
     )
 
     assert resp.status_code == 409
-    assert resp.json()["detail"] == "Account already linked to another Google identity"
+    assert resp.json()["detail"] == "GOOGLE_ACCOUNT_CONFLICT"
 
 
 @pytest.mark.asyncio
@@ -464,7 +464,7 @@ async def test_google_auth_propagates_verifier_failure_as_401(
     async def _fake_fail(_token: str) -> dict:
         raise HTTPException(
             status_code=http_status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Google ID token",
+            detail="GOOGLE_TOKEN_INVALID",
         )
 
     monkeypatch.setattr(auth_api, "verify_google_id_token", _fake_fail)
@@ -474,7 +474,7 @@ async def test_google_auth_propagates_verifier_failure_as_401(
     )
 
     assert resp.status_code == 401
-    assert resp.json()["detail"] == "Invalid Google ID token"
+    assert resp.json()["detail"] == "GOOGLE_TOKEN_INVALID"
 
 
 # --- password reset ----------------------------------------------------------

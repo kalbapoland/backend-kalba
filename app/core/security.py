@@ -9,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
 
 from app.core.config import Settings, get_settings
+from app.core.errors import ErrorCode
 
 GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/tokeninfo"
 
@@ -63,12 +64,12 @@ def _decode_token(token: str, settings: Settings | None = None) -> dict:
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired",
+            detail=ErrorCode.TOKEN_EXPIRED,
         )
     except jwt.InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
+            detail=ErrorCode.TOKEN_INVALID,
         )
 
 
@@ -77,7 +78,7 @@ def decode_access_token(token: str, settings: Settings | None = None) -> dict:
     if payload.get("type") != "access":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token type",
+            detail=ErrorCode.TOKEN_INVALID_TYPE,
         )
     return payload
 
@@ -87,7 +88,7 @@ def decode_refresh_token(token: str, settings: Settings | None = None) -> dict:
     if payload.get("type") != "refresh":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token",
+            detail=ErrorCode.TOKEN_REFRESH_INVALID,
         )
     return payload
 
@@ -121,7 +122,7 @@ async def verify_google_id_token(
     if resp.status_code != 200:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Google ID token",
+            detail=ErrorCode.GOOGLE_TOKEN_INVALID,
         )
 
     payload = resp.json()
@@ -139,7 +140,7 @@ async def verify_google_id_token(
     if allowed_client_ids and payload.get("aud") not in allowed_client_ids:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token was not issued for this application",
+            detail=ErrorCode.GOOGLE_TOKEN_WRONG_AUDIENCE,
         )
 
     return payload

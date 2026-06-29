@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 
+from app.core.errors import ErrorCode
 from app.core.security import get_current_user_id
 
 
@@ -52,7 +53,7 @@ async def enforce_google_auth_rate_limit(request: Request) -> None:
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many authentication attempts. Try again in a minute.",
+            detail=ErrorCode.RATE_LIMIT_AUTH,
         )
 
 
@@ -65,7 +66,7 @@ async def enforce_password_reset_rate_limit(request: Request) -> None:
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many password reset requests. Try again in a few minutes.",
+            detail=ErrorCode.RATE_LIMIT_PASSWORD_RESET,
         )
 
 
@@ -77,5 +78,5 @@ async def enforce_push_token_rate_limit(
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many push token updates. Try again in a minute.",
+            detail=ErrorCode.RATE_LIMIT_PUSH_TOKEN,
         )
