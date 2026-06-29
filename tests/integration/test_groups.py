@@ -6,6 +6,7 @@ import app.api.v1.groups as _groups_module
 from app.core.security import create_access_token
 from app.models.group import Group
 from app.models.user import User, UserRole
+from app.models.workshop import Workshop
 from app.services.notifications import DispatchResult, PushMessage
 
 
@@ -185,6 +186,28 @@ async def test_update_group_by_regular_user_forbidden(
 
 
 # --- DELETE /groups/{id} ---
+
+
+async def test_delete_group_with_live_workshop_returns_409(
+    client, trainer_token, trainer, group, db_session
+):
+    now = datetime.now(UTC).replace(tzinfo=None)
+    workshop = Workshop(
+        trainer_id=trainer.id,
+        group_id=group.id,
+        title="Live Workshop",
+        start_time=now - timedelta(minutes=5),
+        duration_minutes=60,
+        max_participants=10,
+    )
+    db_session.add(workshop)
+    await db_session.commit()
+
+    resp = await client.delete(
+        f"/api/v1/groups/{group.id}",
+        headers={"Authorization": f"Bearer {trainer_token}"},
+    )
+    assert resp.status_code == 409
 
 
 async def test_delete_group_owner_soft_deletes(client, trainer_token, group_payload):

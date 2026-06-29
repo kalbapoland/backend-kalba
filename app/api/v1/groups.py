@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -220,6 +220,17 @@ async def delete_group(
             )
         ).all()
     )
+
+    live = [
+        w for w in workshops
+        if w.start_time <= now < w.start_time + timedelta(minutes=w.duration_minutes)
+    ]
+    if live:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete group while a workshop is in progress",
+        )
+
     for workshop in workshops:
         workshop.deleted_at = now
         await create_workshop_cancelled_notifications(session, workshop=workshop)
