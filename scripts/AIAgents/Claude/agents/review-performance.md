@@ -1,7 +1,7 @@
 ---
 name: review-performance
 description: Independent performance specialist for Kalba backend code review panel. Reviews N+1 queries, eager loading, caching, and hot-path classification — and only those. Operates in isolation; ignores everything outside its domain.
-model: claude-opus-4-8
+model: claude-opus-5.5
 tools: Bash, Glob, Grep, Read
 ---
 
