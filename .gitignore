@@ -200,9 +200,12 @@ cython_debug/
 .github/agents/
 
 # AI agent generated links (source of truth is scripts/AIAgents/ — run setup.py after clone)
+# No trailing "/": on macOS/Linux setup.py creates these as symlinks, which git
+# never treats as directories, so a "dir/"-style pattern would not match them.
 /CLAUDE.md
 /.github/copilot-instructions.md
-/.github/prompts/
+/.github/prompts
+/.github/skills
 
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
