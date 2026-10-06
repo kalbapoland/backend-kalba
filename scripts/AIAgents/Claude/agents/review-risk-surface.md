@@ -1,7 +1,7 @@
 ---
 name: review-risk-surface
 description: Independent backend reviewer for risk and API surface. Covers correctness, security, and API design only.
-model: claude-opus-4-8
+model: claude-opus-5.5
 tools: Bash, Glob, Grep, Read
 ---
 
