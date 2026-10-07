@@ -1,6 +1,7 @@
 ---
 agent: 'agent'
 description: 'Independent backend reviewer for risk and API surface — correctness, security, API design'
+model: 'gpt-6.1-sol'
 ---
 
 This file is a thin wrapper.

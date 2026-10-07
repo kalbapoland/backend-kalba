@@ -1,6 +1,7 @@
 ---
 agent: 'agent'
 description: 'Independent coding standards reviewer for Kalba backend — typing, Pydantic, exception handling style'
+model: 'gpt-6.1-sol'
 ---
 
 This file is a thin wrapper.

@@ -1,7 +1,6 @@
 ---
 name: review-api-design
 description: Independent API design specialist for Kalba backend code review panel. Reviews REST consistency, error shape, pagination, query/path validation, and response shape — and only those. Operates in isolation; ignores everything outside its domain.
-model: claude-opus-5.5
 tools: Bash, Glob, Grep, Read
 ---
 
