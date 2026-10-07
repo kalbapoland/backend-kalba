@@ -1,6 +1,7 @@
 ---
 agent: 'agent'
 description: 'Independent API design reviewer for Kalba backend — HTTP semantics, pagination, error shape'
+model: 'gpt-6.1-sol'
 ---
 
 This file is a thin wrapper.

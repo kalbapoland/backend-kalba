@@ -1,6 +1,7 @@
 ---
 agent: 'agent'
 description: 'Independent security reviewer for Kalba backend — auth, role enforcement, secrets, logging, CORS, webhook signatures'
+model: 'gpt-6.1-sol'
 ---
 
 This file is a thin wrapper.

@@ -1,6 +1,7 @@
 ---
 agent: 'agent'
 description: 'Independent performance reviewer for Kalba backend — N+1 queries, caching, eager loading'
+model: 'gpt-6.1-sol'
 ---
 
 This file is a thin wrapper.

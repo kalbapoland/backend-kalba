@@ -1,6 +1,7 @@
 ---
 agent: 'agent'
 description: 'Independent tests reviewer for Kalba backend — coverage of new behavior and edge cases'
+model: 'gpt-6.1-sol'
 ---
 
 This file is a thin wrapper.

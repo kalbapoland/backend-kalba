@@ -1,6 +1,7 @@
 ---
 agent: 'agent'
 description: 'Single-pass full-spectrum reviewer for Kalba backend — covers all 7 domains in one pass for small diffs (< 100 changed lines)'
+model: 'gpt-6.1-sol'
 ---
 
 This file is a thin wrapper.

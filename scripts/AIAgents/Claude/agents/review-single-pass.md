@@ -1,7 +1,6 @@
 ---
 name: review-single-pass
 description: Single-pass full-spectrum reviewer for Kalba backend. Covers all 7 domains in one context window for small diffs (< 100 changed lines). Used by the code-reviewer manager as a cost-efficient alternative to the full specialist panel.
-model: claude-opus-5.5
 tools: Bash, Glob, Grep, Read
 ---
 

@@ -1,7 +1,6 @@
 ---
 name: review-security
 description: Independent security specialist for Kalba backend code review panel. Reviews auth bypass, JWT/Google token handling, SQL injection, CORS, sensitive logging, webhook signatures, mass assignment, rate limiting — and only those. Operates in isolation; ignores everything outside its domain.
-model: claude-opus-5.5
 tools: Bash, Glob, Grep, Read
 ---
 

@@ -1,7 +1,6 @@
 ---
 name: review-architecture
 description: Independent architecture specialist for Kalba backend code review panel. Reviews layering (services vs handlers), DTO separation, Depends usage, and module coupling — and only those. Operates in isolation; ignores everything outside its domain.
-model: claude-opus-5.5
 tools: Bash, Glob, Grep, Read
 ---
 

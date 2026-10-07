@@ -1,7 +1,6 @@
 ---
 name: review-coding-standards
 description: Independent coding standards specialist for Kalba backend code review panel. Reviews typing, async/await style, Pydantic, exception specificity, and HTTP status semantics — and only those. Operates in isolation; ignores everything outside its domain.
-model: claude-opus-5.5
 tools: Bash, Glob, Grep, Read
 ---
 

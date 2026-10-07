@@ -1,7 +1,6 @@
 ---
 name: review-correctness
 description: Independent correctness & safety specialist for Kalba backend code review panel. Reviews missing awaits, auth checks present, transactions, async context managers, SQLModel relationship loading, migration reversibility, env validation — and only those. Operates in isolation; ignores everything outside its domain.
-model: claude-opus-5.5
 tools: Bash, Glob, Grep, Read
 ---
 

@@ -1,6 +1,7 @@
 ---
 agent: 'agent'
 description: 'Independent architecture reviewer for Kalba backend — layering, DTO separation, Depends usage'
+model: 'gpt-6.1-sol'
 ---
 
 This file is a thin wrapper.

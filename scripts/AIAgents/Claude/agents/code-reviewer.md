@@ -1,7 +1,6 @@
 ---
 name: code-reviewer
 description: Code review manager for Kalba backend. Coordinates max two independent composite subagents and merges their reports into a single consolidated review. Does not review code itself.
-model: claude-opus-5.5
 tools: Bash, Glob, Grep, Read
 ---
 
